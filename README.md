@@ -59,33 +59,61 @@ OSWorld/
 내려갔고 git 히스토리도 **새로 시작**(업스트림 끊음, remote = `whs4thteamraid/raid-cua`)했다.
 → **기존 체크아웃에 `git pull` 하지 말 것** (히스토리가 무관해서 안 됨). **새로 clone** 한다.
 
-**1) 새로 clone**
+### 1) 새로 clone
 
 ```bash
 git clone https://github.com/whs4thteamraid/raid-cua.git
 ```
 
-**2) 기존 로컬 파일을 아래 매핑대로 새 위치에 넣기** (git에 안 올라오는 개인·런타임 파일들)
+### 2) 옛 체크아웃에서 "로컬 전용" 파일만 새 위치로 복사
 
-| 옛 위치 (예전 repo 루트) | 새 위치 |
-|---|---|
-| 거의 모든 코드/설정 | `raid-cua/OSWorld/…` (**같은 상대경로 앞에 `OSWorld/`만 붙음**) |
-| `.env` (API 키) | `raid-cua/OSWorld/.env` |
-| 개인 시나리오 | `raid-cua/OSWorld/security_scenarios/<이름>/` |
-| VM 이미지·스냅샷 | `raid-cua/OSWorld/vmware_vm_data/` |
-| 실험 결과 | `raid-cua/OSWorld/security_results/` |
+> **코드는 clone에 이미 다 들어있다 — 손으로 옮기지 마.** (`desktop_env/`·`mm_agents/`·
+> 공용 `redteam/`(`run_claude_scenario.py`·`smoke_memory.py` 등)·`evaluation_examples/`·`run.py`·
+> `monitor/.env` 는 git이 관리 → clone하면 `OSWorld/` 밑에 자동.)
+> 네가 옮길 건 **git에 안 올라가는(gitignore) 개인·런타임 파일**뿐 — 아래가 그 전부다:
 
-> **핵심 한 줄:** 옛날에 repo 루트에 있던 건 **전부 `OSWorld/` 밑 같은 경로로.**
-> 루트엔 이제 `OSWorld/` · `docs/` · `platform-setup/` · `README.md` 뿐이다.
+| 실제로 무엇 | 옛 위치 | 새 위치 |
+|---|---|---|
+| **개인 시나리오 — 폴더째로** (각 `ipi_XXX_*/`. 안의 `scenario.json`·`serve.py`·`webroot/`(html)·`phase2_*.json`·`exfil_*.jsonl`·README 전부 딸려옴) | `security_scenarios/ipi_XXX_*/` | `OSWorld/security_scenarios/ipi_XXX_*/` |
+| **메인 `.env`** (ANTHROPIC_API_KEY) | `.env` | `OSWorld/.env` |
+| **VM 이미지·스냅샷** | `vmware_vm_data/` | `OSWorld/vmware_vm_data/` |
+| **옛 실험 결과** (보관하려면) | `security_results/` | `OSWorld/security_results/` |
+| **메모리 산출물** (있으면) | `redteam/memstore/` | `OSWorld/redteam/memstore/` |
+| **개인 러너** (자기 것, gitignore된 것) | `redteam/run_memory_scenario.py`·`set_host_ip.sh` | `OSWorld/redteam/` |
 
-**3) 확인**
+> **시나리오는 폴더 통째로** 옮기면 안에 뭐가 있든(html·서버·이미지·json·로그) 다 따라온다.
+> clone 하면 `security_scenarios/`는 골격(README·.gitkeep)만 있고 **비어있다** — 각자 자기 폴더를 넣는다.
+> `.venv/`·`_handoff/`·`cache/`·`logs/`·`results/`는 **안 옮김** (`.venv`는 아래 `uv sync`로 새로,
+> 나머지는 스크래치라 실행하면 `OSWorld/` 밑에 새로 생김).
+
+### 3) 파일 이동만으로 안 되는 2단계 (필수)
+
+파일을 제자리에 뒀어도 아래 둘을 안 하면 안 돈다.
+
+| # | 해야 함 | 왜 |
+|---|---------|-----|
+| ① | `cd raid-cua/OSWorld && uv sync` | `.venv/`는 옮기는 게 아니라 **새로 만드는 것.** 없으면 실행 자체가 안 됨 |
+| ② | VMware에서 옮긴 `.vmx` **재등록** (Fusion 메뉴 **File→Open→**`OSWorld/vmware_vm_data/Ubuntu0/Ubuntu0.vmx` → **"I Moved It"**) | `vmware_vm_data/` 폴더를 옮겨도 **VMware는 옛 경로를 기억** → "File not found" |
+
+### 4) 조건부 (해당될 때만)
+
+- **`.env`의 API 키가 유효**해야 함 (파일만 있고 키 만료면 실패).
+- **host 서버(`serve.py`) 쓰는 시나리오**를 돌릴 거면 → `bash redteam/set_host_ip.sh` 한 번.
+  복사해온 시나리오엔 옛 IP가 박혀 있어서, 자기 네트워크 IP로 갱신해야 VM이 호스트를 찾는다.
+- 구글 태스크(OSWorld 원본) 돌릴 거면 `evaluation_examples/settings/google*` 크리덴셜 별도 배치.
+  (우리 Claude CUA 레드팀 경로엔 **불필요**.)
+
+### 5) 확인
 
 ```bash
-cd raid-cua/OSWorld && uv sync
-# VM 은 OSWorld/vmware_vm_data/Ubuntu0/Ubuntu0.vmx 에 있어야 러너가 찾는다.
-# (VMware 라이브러리에 옛 절대경로로 등록돼 "없음" 뜨면 이 .vmx 를 다시 열어 재등록)
-uv run python mm_agents/claude_cua/memory_backend.py   # 14/14 PASS
+cd raid-cua/OSWorld
+uv sync
+uv run python mm_agents/claude_cua/memory_backend.py            # 백엔드 14/14 PASS
+uv run python redteam/smoke_memory.py                           # 메모리 도구 동작(API)
+uv run python redteam/run_claude_scenario.py --instruction "noop" --setup-only   # VM 부팅 확인
 ```
+
+세 개 다 통과하면 이전 완료.
 
 ---
 
