@@ -26,3 +26,6 @@ OSWorld/redteam/set_host_ip.sh
 OSWorld/security_scenarios/*/
 !OSWorld/security_scenarios/.gitkeep
 !OSWorld/security_scenarios/README.md
+
+# macOS
+.DS_Store
