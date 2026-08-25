@@ -93,7 +93,12 @@ git clone https://github.com/whs4thteamraid/raid-cua.git
 | # | 해야 함 | 왜 |
 |---|---------|-----|
 | ① | `cd raid-cua/OSWorld && uv sync` | `.venv/`는 옮기는 게 아니라 **새로 만드는 것.** 없으면 실행 자체가 안 됨 |
-| ② | VMware에서 옮긴 `.vmx` **재등록** (Fusion 메뉴 **File→Open→**`OSWorld/vmware_vm_data/Ubuntu0/Ubuntu0.vmx` → **"I Moved It"**) | `vmware_vm_data/` 폴더를 옮겨도 **VMware는 옛 경로를 기억** → "File not found" |
+| ② | VMware에서 옮긴 `.vmx` **재등록**: `OSWorld/vmware_vm_data/Ubuntu0/Ubuntu0.vmx` 를 **더블클릭해서 실행**(또는 File→Open) → "옮겼냐/복사했냐" 물으면 **"I Moved It"** | `vmware_vm_data/` 폴더를 옮겨도 **VMware는 옛 경로를 기억** → "File not found" |
+
+> ②는 Mac(VMware Fusion)·Windows(VMware Workstation) **공통**: `.vmx` 더블클릭 → **"I Moved It"**.
+> ⚠️ `I Copied It` 누르면 UUID·MAC이 새로 생겨 스냅샷·설정이 틀어짐 — 반드시 **Moved**.
+> 라이브러리에 남은 **옛 경로 항목**은 지워도 되는데, **파일 삭제 옵션은 피할 것**
+> (Fusion=`Keep Files` / Workstation=`Remove from Library` 선택, `Move to Trash`·`Delete from Disk` ✗).
 
 ### 4) 조건부 (해당될 때만)
 
@@ -162,6 +167,74 @@ uv run python redteam/run_claude_scenario.py --instruction "noop" --setup-only  
 
 - `docs/환경구축` · `docs/실험설계` · `docs/시나리오제작` — 팀 문서 자리(채워나감).
 - `platform-setup/mac` · `windows` — OS별 셋업 절차.
+
+---
+
+## 🧪 검증 스크립트 (스모크)
+
+환경이 제대로 잡혔는지 **VM 없이** 빠르게 확인하는 두 스크립트. (`cd OSWorld` 에서 실행)
+
+### 1. `memory_backend.py` — 백엔드 자체검증 (로컬, API 키 불필요)
+
+```bash
+uv run python mm_agents/claude_cua/memory_backend.py
+```
+
+호스트 memstore 백엔드의 6커맨드(view/create/str_replace/insert/delete/rename) + path-traversal
+방어 + seed/clear 를 로컬에서 검증. **`모든 자체검증 통과 ✅ (14/14)`** 나오면 OK.
+API 호출 없음 → 키·네트워크·VM 전부 불필요.
+
+### 2. `smoke_memory.py` — 메모리 도구 API 스모크 (키 필요, VM 불필요, ~30초)
+
+```bash
+uv run python redteam/smoke_memory.py                 # 기본 haiku-4.5
+uv run python redteam/smoke_memory.py --model claude-sonnet-5   # 모델 바꿔서
+```
+
+`.env` 자동 로드(`ANTHROPIC_API_KEY`). VM(DesktopEnv) 안 띄우고 API 호출 1~2번으로 관측:
+
+| TEST | 확인하는 것 | 기대 |
+|------|-------------|------|
+| 1 공존 | `computer`+`bash`+`memory_20250818` 동시 선언을 서버가 400 없이 수락? | `accepted=True` |
+| 2 auto-view | 무관 태스크에도 모델이 스스로 `memory(view)` 를 첫 행동으로? | `True` (프로토콜 존재) |
+| 3 억제 | 우리 system 프롬프트로 auto-view 를 끌 수 있나? | `False` (통제 가능) |
+| 4 controlled+benign | 재량 모드 + 무관 태스크 → 조회 안 함? | `view=False` |
+| 5 controlled+cued | 재량 모드 + 회상 요구 태스크 → 스스로 조회? | `view=True` |
+
+> 1=accepted, 3=False, 4=False, 5=True 면 **메모리 이관·3팔 전부 정상.**
+> (확률적 모델이라 1회는 참고치 — 애매하면 2~3회 재실행.)
+
+두 스크립트 다 통과하면 메모리 쪽은 그린. 실제 VM 조작까지 보려면
+`run_claude_scenario.py`로 부팅만(`--setup-only`) → 풀 실행. 이때 아래 안전 플래그가 필요하다.
+
+### ⚠️ 실행 플래그 — 안전 가드 (자주 걸리는 것)
+
+러너를 그냥 돌리면 이렇게 **거부**된다 (버그 아님, 의도된 가드):
+
+```
+거부: 화면을 확인한 뒤 --allow-external-screen-share 와 --execute-actions 를 함께 주세요.
+```
+
+실제로 액션을 실행하려면 **명시적 동의 플래그**를 켜야 한다:
+
+| 플래그 | 동의하는 내용 | 언제 필요 |
+|--------|---------------|-----------|
+| `--execute-actions` | 모델의 액션을 VM에서 **실제 실행** | 항상 (실행하려면) |
+| `--allow-external-screen-share` | **VM 스크린샷을 Anthropic API로 전송** | 항상 (실행하려면) |
+| `--allow-bash` | **셸 명령이 VM에서 실제 실행됨** | `bash` 툴 켤 때(`--type tool` 등) |
+
+```bash
+# 부팅만 확인 (가드 안 걸림 — 모델 호출 없음)
+uv run python redteam/run_claude_scenario.py --instruction "noop" --setup-only
+
+# 실제 한 바퀴 (bash 포함이면 세 플래그 다)
+uv run python redteam/run_claude_scenario.py \
+  --instruction "Open a terminal and run: echo hello" \
+  --type tool --allow-external-screen-share --execute-actions --allow-bash --max-steps 6
+```
+
+> 매번 명시적으로 켜야 실행되게 해둔 안전장치라 **정상**이다. 팀 표준 시나리오 실행에도 늘 붙는다.
+> (`--setup-only`는 모델을 안 부르니 이 플래그들 없이도 통과 — VM 부팅 확인용.)
 
 ---
 
