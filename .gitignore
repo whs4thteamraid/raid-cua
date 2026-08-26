@@ -21,7 +21,7 @@ OSWorld/evaluation_examples/settings/googledrive/credentials.json
 OSWorld/evaluation_examples/settings/googledrive/client_secrets.json
 
 # ── 개인(raid-mirror) 전용 — 로컬 유지, 커밋 제외 ─
-OSWorld/redteam/run_memory_scenario.py
+OSWorld/redteam/run_claude_memory_2phase.py
 OSWorld/redteam/set_host_ip.sh
 OSWorld/security_scenarios/*/
 !OSWorld/security_scenarios/.gitkeep

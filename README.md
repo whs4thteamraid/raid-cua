@@ -16,7 +16,7 @@ uv sync                                                # 의존성 설치 (anthr
 # .env 에 ANTHROPIC_API_KEY 넣기 (커밋 금지)
 
 uv run python mm_agents/claude_cua/memory_backend.py   # 백엔드 자체검증 → 14/14 PASS
-uv run python redteam/smoke_memory.py                  # 공존·3팔 동작 확인
+uv run python redteam/smoke_claude_memory.py                  # 공존·3팔 동작 확인
 ```
 
 ### ✅ 이렇게 나오면 정상
@@ -38,7 +38,7 @@ Installed N packages in ...
 모든 자체검증 통과 ✅
 ```
 
-**`smoke_memory.py`** — TEST 1~5, 아래 값이 기대치 (확률적이라 애매하면 2~3회):
+**`smoke_claude_memory.py`** — TEST 1~5, 아래 값이 기대치 (확률적이라 애매하면 2~3회):
 
 ```
   ✓ TEST1 accepted = True        (computer+bash+memory 동시 선언 수락)
@@ -103,7 +103,7 @@ git clone https://github.com/whs4thteamraid/raid-cua.git
 ### 2) 옛 체크아웃에서 "로컬 전용" 파일만 새 위치로 복사
 
 > **코드는 clone에 이미 다 들어있다 — 손으로 옮기지 마.** (`desktop_env/`·`mm_agents/`·
-> 공용 `redteam/`(`run_claude_scenario.py`·`smoke_memory.py` 등)·`evaluation_examples/`·`run.py`·
+> 공용 `redteam/`(`run_claude.py`·`smoke_claude_memory.py` 등)·`evaluation_examples/`·`run.py`·
 > `monitor/.env` 는 git이 관리 → clone하면 `OSWorld/` 밑에 자동.)
 > 네가 옮길 건 **git에 안 올라가는(gitignore) 개인·런타임 파일**뿐 — 아래가 그 전부다:
 
@@ -151,8 +151,8 @@ git clone https://github.com/whs4thteamraid/raid-cua.git
 cd raid-cua/OSWorld
 uv sync
 uv run python mm_agents/claude_cua/memory_backend.py            # 백엔드 14/14 PASS
-uv run python redteam/smoke_memory.py                           # 메모리 도구 동작(API)
-uv run python redteam/run_claude_scenario.py --instruction "noop" --setup-only   # VM 부팅 확인
+uv run python redteam/smoke_claude_memory.py                           # 메모리 도구 동작(API)
+uv run python redteam/run_claude.py --instruction "noop" --setup-only   # VM 부팅 확인
 ```
 
 세 개 다 통과하면 이전 완료.
@@ -180,10 +180,10 @@ uv run python redteam/run_claude_scenario.py --instruction "noop" --setup-only  
 
 | 파일 | 역할 |
 |------|------|
-| `smoke_memory.py` | 메모리 도구 공존·auto-view·3팔 **환경 검증**(30초) |
+| `smoke_claude_memory.py` | 메모리 도구 공존·auto-view·3팔 **환경 검증**(30초) |
 | `README_memory_tool.md` | 메모리 이관 모듈 팀 공유 설명서 |
-| `check_anthropic.py` | SDK/키 점검 |
-| `set_endpoint.py` | 엔드포인트 설정 |
+| `check_claude_api.py` | SDK/키 점검 |
+| `set_opencua_endpoint.py` | 엔드포인트 설정 |
 
 > 각자 **개인 러너·`memstore/`**는 `.gitignore`로 미추적 — 로컬에만 두고 커밋되지 않는다.
 > (즉 clone 하면 위 공용 파일만 받고, 개인 실행기는 각자 만들어 쓴다.)
@@ -220,11 +220,11 @@ uv run python mm_agents/claude_cua/memory_backend.py
 방어 + seed/clear 를 로컬에서 검증. **`모든 자체검증 통과 ✅ (14/14)`** 나오면 OK.
 API 호출 없음 → 키·네트워크·VM 전부 불필요.
 
-### 2. `smoke_memory.py` — 메모리 도구 API 스모크 (키 필요, VM 불필요, ~30초)
+### 2. `smoke_claude_memory.py` — 메모리 도구 API 스모크 (키 필요, VM 불필요, ~30초)
 
 ```bash
-uv run python redteam/smoke_memory.py                 # 기본 haiku-4.5
-uv run python redteam/smoke_memory.py --model claude-sonnet-5   # 모델 바꿔서
+uv run python redteam/smoke_claude_memory.py                 # 기본 haiku-4.5
+uv run python redteam/smoke_claude_memory.py --model claude-sonnet-5   # 모델 바꿔서
 ```
 
 `.env` 자동 로드(`ANTHROPIC_API_KEY`). VM(DesktopEnv) 안 띄우고 API 호출 1~2번으로 관측:
@@ -241,7 +241,7 @@ uv run python redteam/smoke_memory.py --model claude-sonnet-5   # 모델 바꿔�
 > (확률적 모델이라 1회는 참고치 — 애매하면 2~3회 재실행.)
 
 두 스크립트 다 통과하면 메모리 쪽은 그린. 실제 VM 조작까지 보려면
-`run_claude_scenario.py`로 부팅만(`--setup-only`) → 풀 실행. 이때 아래 안전 플래그가 필요하다.
+`run_claude.py`로 부팅만(`--setup-only`) → 풀 실행. 이때 아래 안전 플래그가 필요하다.
 
 ### ⚠️ 실행 플래그 — 안전 가드 (자주 걸리는 것)
 
@@ -261,10 +261,10 @@ uv run python redteam/smoke_memory.py --model claude-sonnet-5   # 모델 바꿔�
 
 ```bash
 # 부팅만 확인 (가드 안 걸림 — 모델 호출 없음)
-uv run python redteam/run_claude_scenario.py --instruction "noop" --setup-only
+uv run python redteam/run_claude.py --instruction "noop" --setup-only
 
 # 실제 한 바퀴 (bash 포함이면 세 플래그 다)
-uv run python redteam/run_claude_scenario.py \
+uv run python redteam/run_claude.py \
   --instruction "Open a terminal and run: echo hello" \
   --type tool --allow-external-screen-share --execute-actions --allow-bash --max-steps 6
 ```

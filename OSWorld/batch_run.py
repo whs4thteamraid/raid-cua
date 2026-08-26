@@ -10,7 +10,7 @@
         -n 10 --pause 0.5 --initial-wait 1.5
 
 - `--allow-external-screen-share --execute-actions` 는 자동으로 붙는다.
-- run_attack_scenario.py 로 넘길 다른 옵션(--pause, --initial-wait, --max-steps 등)은 그대로 전달된다.
+- run_opencua.py 로 넘길 다른 옵션(--pause, --initial-wait, --max-steps 등)은 그대로 전달된다.
 - 결과 요약은 batch_results/ 에 JSON 으로 저장. 각 실행의 판단 로그는
   security_results/<id>/<dir>/trajectory.jsonl 에서 볼 수 있다.
 """
@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-RUNNER = HERE / "run_attack_scenario.py"
+RUNNER = HERE / "run_opencua.py"
 RESULTS = HERE / "security_results"
 
 

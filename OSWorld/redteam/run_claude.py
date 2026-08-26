@@ -7,20 +7,25 @@ Run Claude Computer Use over OSWorld — with a runtime 유형1/유형2 switch.
 mm_agents/claude_cua 의 설정형 에이전트를 써서 툴 세트를 '실행 옵션'으로 고른다:
 
     # 유형1 (GUI만)
-    python run_claude_scenario.py --instruction "..." --allow-external-screen-share --execute-actions
+    python run_claude.py --instruction "..." --allow-external-screen-share --execute-actions
 
     # 유형2 (bash 열림) — bash 실행은 --allow-bash 를 추가로 요구(안전장치)
-    python run_claude_scenario.py --instruction "open a terminal? no—just: create ~/hi.txt with the date" \
+    python run_claude.py --instruction "open a terminal? no—just: create ~/hi.txt with the date" \
         --tools computer,bash --allow-bash --allow-external-screen-share --execute-actions
 
     # 공식 IPI 시나리오로 채점까지
-    python run_claude_scenario.py --scenario security_scenarios/ipi_001_visible_web_prompt/scenario.json \
+    python run_claude.py --scenario security_scenarios/ipi_001_visible_web_prompt/scenario.json \
         --tools computer,bash --allow-bash --allow-external-screen-share --execute-actions
 
 --type gui  == --tools computer          (유형1)
 --type tool == --tools computer,bash     (유형2)   (명시적 --tools 가 우선)
 
-호스트(맥)에서 실행. ANTHROPIC_API_KEY 는 .env 에서 로드.
+    # 메모리 켜기(기본 off) — 공식 memory_20250818 도구 얹은 범용 실행
+    python run_claude.py --scenario ... --tools computer,bash --allow-bash \
+        --allow-external-screen-share --execute-actions \
+        --memory --read-mode faithful --memstore-dir ./memstore
+
+메모리는 --memory 없으면 완전히 off(기존과 동일). 호스트(맥)에서 실행. ANTHROPIC_API_KEY 는 .env 에서 로드.
 """
 from __future__ import annotations
 
@@ -37,6 +42,7 @@ from dotenv import load_dotenv
 
 from desktop_env.desktop_env import DesktopEnv
 from mm_agents.claude_cua import ClaudeCUAAgent
+from mm_agents.claude_cua.agent_memory import MemoryClaudeCUAAgent
 
 
 # Repo root = nearest ancestor containing desktop_env/. Robust to this script
@@ -64,6 +70,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--pause", type=float, default=1.0)
     p.add_argument("--initial-wait", type=float, default=3.0)
     p.add_argument("--send-width", type=int, default=1280)
+    # ── 메모리 옵션 (기본 off) ─────────────────────────────────────────
+    p.add_argument("--memory", action="store_true",
+                   help="공식 memory_20250818 도구를 얹은 MemoryClaudeCUAAgent 사용 (기본 off)")
+    p.add_argument("--memstore-dir", default=None,
+                   help="호스트 memstore 경로 (기본 ./memstore) — 반드시 VM 밖")
+    p.add_argument("--read-mode", choices=["faithful", "controlled", "inject"],
+                   default="faithful",
+                   help="faithful=서버 auto-view / controlled=재량 / inject=노트 선주입")
 
     p.add_argument("--allow-external-screen-share", action="store_true",
                    help="VM 스크린샷을 Anthropic API 로 보낸다는 확인.")
@@ -121,7 +135,7 @@ def main() -> None:
     if not os.environ.get("ANTHROPIC_API_KEY"):
         sys.exit("ANTHROPIC_API_KEY 가 없습니다 (.env 확인).")
 
-    # safety gates (mirror run_attack_scenario.py) + bash confirmation
+    # safety gates (mirror run_opencua.py) + bash confirmation
     if not args.setup_only and (not args.allow_external_screen_share or not args.execute_actions):
         sys.exit("거부: 화면을 확인한 뒤 --allow-external-screen-share 와 --execute-actions 를 함께 주세요.")
     if "bash" in tools and not args.allow_bash and not args.setup_only:
@@ -185,12 +199,17 @@ def main() -> None:
         if args.popup_xy:
             _px, _py = args.popup_xy.split(",")
             popup_xy = (int(_px), int(_py))
-        agent = ClaudeCUAAgent(env, model=args.model, tools=tuple(tools),
-                               send_width=args.send_width,
-                               inject_popup=args.inject_popup,
-                               popup_pos=args.popup_pos,
-                               popup_ad_label=not args.popup_no_ad,
-                               popup_xy=popup_xy)
+        AgentCls = MemoryClaudeCUAAgent if args.memory else ClaudeCUAAgent
+        mem_kw = dict(memstore_dir=args.memstore_dir, read_mode=args.read_mode) if args.memory else {}
+        agent = AgentCls(env, model=args.model, tools=tuple(tools),
+                         send_width=args.send_width,
+                         inject_popup=args.inject_popup,
+                         popup_pos=args.popup_pos,
+                         popup_ad_label=not args.popup_no_ad,
+                         popup_xy=popup_xy,
+                         **mem_kw)
+        if args.memory:
+            print(f"[+] 메모리 ON — read_mode={args.read_mode}  memstore={agent.memstore_dir}")
         if args.inject_popup:
             print(f"[+] 팝업 공격 ON — pos={args.popup_pos}  ad_label={not args.popup_no_ad}")
         result = agent.run(instruction, max_steps=max_steps, result_dir=str(result_dir))

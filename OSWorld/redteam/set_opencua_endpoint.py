@@ -7,11 +7,11 @@ LLM 서버 주소 한 번에 갱신 — RunPod 팟을 껐다 켜서 URL이 바�
 이 파일은 OSWorld-audit 루트에 둔다 (.env 와 같은 폴더).
 
 사용:
-    python3 set_endpoint.py https://xxxx-8000.proxy.runpod.net
-    python3 set_endpoint.py xxxx                 # pod id만 → https://xxxx-8000.proxy.runpod.net
-    python3 set_endpoint.py https://... --model opencua-72b
-    python3 set_endpoint.py --show               # 현재 .env 값 보기
-    python3 set_endpoint.py https://... --no-check   # 연결 확인 생략
+    python3 set_opencua_endpoint.py https://xxxx-8000.proxy.runpod.net
+    python3 set_opencua_endpoint.py xxxx                 # pod id만 → https://xxxx-8000.proxy.runpod.net
+    python3 set_opencua_endpoint.py https://... --model opencua-72b
+    python3 set_opencua_endpoint.py --show               # 현재 .env 값 보기
+    python3 set_opencua_endpoint.py https://... --no-check   # 연결 확인 생략
 """
 from __future__ import annotations
 
@@ -87,7 +87,7 @@ def main() -> None:
         print(f"  OPENCUA_BASE_URL = {get_key(lines, 'OPENCUA_BASE_URL')}")
         print(f"  OPENCUA_MODEL    = {get_key(lines, 'OPENCUA_MODEL')}")
         if not args.endpoint and not args.show:
-            print("\n사용: python3 set_endpoint.py <RunPod URL 또는 pod id> [--model ...]")
+            print("\n사용: python3 set_opencua_endpoint.py <RunPod URL 또는 pod id> [--model ...]")
         return
 
     url = build_url(args.endpoint, args.port)

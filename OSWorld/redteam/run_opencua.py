@@ -19,10 +19,10 @@ from dotenv import load_dotenv
 from desktop_env.desktop_env import DesktopEnv
 from mm_agents.opencua import OpenCUAAgent
 
-# run_opencua_smoke.py lives next to this file — add its dir to sys.path so this
+# smoke_opencua.py lives next to this file — add its dir to sys.path so this
 # import resolves whether the script is at repo root or in a subfolder (e.g. redteam/).
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from run_opencua_smoke import is_safe_smoke_action
+from smoke_opencua import is_safe_smoke_action
 
 
 # Repo root = nearest ancestor containing desktop_env/. Robust to this script

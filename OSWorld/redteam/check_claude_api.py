@@ -6,9 +6,9 @@ Claude Computer Use '구성 확인' 스크립트 — VM/OSWorld 없이, API 키�
 "config 문제"와 "배선 문제"를 분리할 수 있다.
 
 사용:
-    python3 check_anthropic.py                       # 기본: claude-haiku-4-5
-    python3 check_anthropic.py --model claude-opus-4-8
-    python3 check_anthropic.py --with-bash           # bash 툴까지 함께 확인(유형2 목표 구성)
+    python3 check_claude_api.py                       # 기본: claude-haiku-4-5
+    python3 check_claude_api.py --model claude-opus-4-8
+    python3 check_claude_api.py --with-bash           # bash 툴까지 함께 확인(유형2 목표 구성)
 
 읽는 환경변수: ANTHROPIC_API_KEY  (.env 자동 로드)
 """

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-smoke_memory.py — 공식 memory tool(memory_20250818) 이관 전 최소 검증 스크립트.
+smoke_claude_memory.py — 공식 memory tool(memory_20250818) 이관 전 최소 검증 스크립트.
 
 목적 (계획서 6절 스텝1):
   기존 하네스(agent.py / agent_memory.py / 러너)를 한 줄도 건드리지 않고,
@@ -20,8 +20,8 @@ smoke_memory.py — 공식 memory tool(memory_20250818) 이관 전 최소 검증
 
 실행:
   cd OSWorld-audit
-  ANTHROPIC_API_KEY=... uv run python redteam/smoke_memory.py
-  # 모델 바꾸려면:  uv run python redteam/smoke_memory.py --model claude-haiku-4-5
+  ANTHROPIC_API_KEY=... uv run python redteam/smoke_claude_memory.py
+  # 모델 바꾸려면:  uv run python redteam/smoke_claude_memory.py --model claude-haiku-4-5
 
 결과 해석:
   - TEST1 accepted=True         → 공존 OK. 이관 진행 가능.

@@ -15,7 +15,7 @@ CUA 레드팀 하네스의 메모리 기능을 **Anthropic 공식 memory tool(`m
 | **필수** | `mm_agents/claude_cua/memory_backend.py` | 공식 도구의 저장 백엔드 |
 | **필수** | `mm_agents/claude_cua/agent_memory.py` | 메모리 도구를 물린 에이전트 |
 | **필수** | `pyproject.toml` · `requirements.txt` · `uv.lock` | `anthropic==0.84.0` 핀 |
-| 참고 | `redteam/smoke_memory.py` | 환경 검증용 독립 테스트 |
+| 참고 | `redteam/smoke_claude_memory.py` | 환경 검증용 독립 테스트 |
 | 각자 | 시나리오·오케스트레이터·서버·VM 스냅샷 | 팀원이 직접 작성 (오케스트레이션 패턴은 아래 *사용법* 참고) |
 
 ---
@@ -49,7 +49,7 @@ CUA 레드팀 하네스의 메모리 기능을 **Anthropic 공식 memory tool(`m
 - **왜 이렇게**: 팀 전원이 `uv sync`로 **정확히 같은 SDK·핸들러**를 받게 = 정형화.
   실제 강제는 `uv.lock`이 합니다.
 
-### 📎 (참고) `smoke_memory.py` — 환경 검증
+### 📎 (참고) `smoke_claude_memory.py` — 환경 검증
 - 공식 도구가 computer-use와 **공존·동작**하는지 최소 API 호출로 확인(30초).
 
 ---
@@ -93,7 +93,7 @@ result = agent.run(instruction, max_steps=18)
 ```bash
 uv sync                                              # anthropic==0.84.0 설치
 uv run python mm_agents/claude_cua/memory_backend.py # 백엔드 자체검증 → 14/14 PASS
-uv run python redteam/smoke_memory.py                # 공존·동작 확인
+uv run python redteam/smoke_claude_memory.py                # 공존·동작 확인
 ```
 
 ---

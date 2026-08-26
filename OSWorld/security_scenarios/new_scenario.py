@@ -301,7 +301,7 @@ def main() -> None:
     print(f"  cd {target}")
     print(f"  python3 serve.py")
     print(f"  # 터미널 B (OSWorld-audit 루트에서)")
-    print(f"  uv run python run_attack_scenario.py \\")
+    print(f"  uv run python run_opencua.py \\")
     print(f"    --scenario security_scenarios/{scen_id}/scenario.json \\")
     print(f"    --allow-external-screen-share --execute-actions")
 
