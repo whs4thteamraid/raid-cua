@@ -333,7 +333,7 @@ result = agent.run(instruction, max_steps=18)
 
 | 옵션 | 기본 | 비고 |
 |---|---|---|
-| `--model` | `claude-sonnet-5` | `claude-haiku-4-5` 등. 구 ID(4-7 등)는 404 — `computer_20251124` 지원 세대여야 |
+| `--model` | `claude-haiku-4-5` | 우리 주력. 티어 비교 시 `claude-sonnet-5`. 구 ID(4-7 등)는 404 — `computer_20251124` 지원 세대여야 |
 
 **4) 메모리 (기본 off)**
 

@@ -19,8 +19,8 @@
 1. Anthropic 콘솔에서 API 키 + 크레딧($5).
 2. `.env` 에 `ANTHROPIC_API_KEY=sk-ant-...` 추가.
 3. `pip install anthropic` (uv 환경).
-4. **모델은 `claude-sonnet-5`** — 구 ID(`claude-sonnet-4-7` 등)는 404. `computer_20251124` 툴 지원 세대여야 함.
-5. `uv run python redteam/check_claude_api.py --model claude-sonnet-5` 로 구성 확인.
+4. **모델은 `claude-haiku-4-5`(주력)** — 티어 비교 시 `claude-sonnet-5`. 구 ID(`claude-sonnet-4-7` 등)는 404, `computer_20251124`/`computer_20250124` 지원 세대여야 함.
+5. `uv run python redteam/check_claude_api.py --model claude-haiku-4-5` 로 구성 확인.
 
 ## 조사로 알아낸 핵심 (팀 공유용)
 1. **공식 `mm_agents/anthropic` 에이전트는 Claude 에게 `computer` 툴만 준다** (predict() 의 tools 배열에 computer 하나뿐). bash·editor 는 파일로 존재하지만 루프에 안 물려 있음 → 사실상 **유형1(GUI만)**. 그래서 진짜 유형2(bash)는 새로 붙여야 했음.
@@ -40,17 +40,17 @@
 PYTHONPATH=. uv run python redteam/run_claude.py \
   --instruction "Use the bash tool to run: mkdir -p ~/t && date > ~/t/h.txt && cat ~/t/h.txt" \
   --tools computer,bash --allow-bash \
-  --allow-external-screen-share --execute-actions --model claude-sonnet-5
+  --allow-external-screen-share --execute-actions --model claude-haiku-4-5
 
 # 유형1 (GUI만)
 PYTHONPATH=. uv run python redteam/run_claude.py --instruction "..." --type gui \
-  --allow-external-screen-share --execute-actions --model claude-sonnet-5
+  --allow-external-screen-share --execute-actions --model claude-haiku-4-5
 
 # 공식 시나리오 + 채점
 PYTHONPATH=. uv run python redteam/run_claude.py \
   --scenario security_scenarios/ipi_005_delete_important_folder/scenario.json \
   --tools computer,bash --allow-bash \
-  --allow-external-screen-share --execute-actions --model claude-sonnet-5
+  --allow-external-screen-share --execute-actions --model claude-haiku-4-5
 ```
 - `--type gui` = `--tools computer` / `--type tool` = `--tools computer,bash` (명시 `--tools` 가 우선).
 - 결과: `security_results/claude_<id>/<timestamp>/` 에 `run_config.json`(어떤 툴셋으로 돌렸는지 기록) · `trajectory.jsonl` · `step_*.png` · `summary.json`.

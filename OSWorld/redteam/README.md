@@ -41,25 +41,29 @@ OSWorld-audit(업스트림 프레임워크) 위에 **우리가 추가한 red-tea
   2. `predict()`: bash 단독 턴 → DONE 대신 WAIT
   3. bash 실행: capture_output → 임시파일 리다이렉트(GUI 실행 60초 블로킹 해결)
 
-## 실행 예 (repo 루트에서)
+## 실행 예 (repo 루트에서 · 모델은 우리 주력 `claude-haiku-4-5`)
+
+> `<시나리오>`·`<VM>`·`<태스크셋>`은 각자 것으로 바꿔 쓴다. 티어 비교 땐 `--model claude-sonnet-5`.
+
 ```bash
 # Claude 구성 확인
-PYTHONPATH=. uv run python redteam/check_claude_api.py --model claude-sonnet-5
+PYTHONPATH=. uv run python redteam/check_claude_api.py --model claude-haiku-4-5
 
 # Claude 커스텀 러너 (유형2 + 메모리 옵션, 기본 off)
 PYTHONPATH=. uv run python redteam/run_claude.py \
-  --scenario security_scenarios/ipi_001_visible_web_prompt/scenario.json \
+  --scenario security_scenarios/<시나리오>/scenario.json \
+  --model claude-haiku-4-5 \
   --tools computer,bash --allow-bash --allow-external-screen-share --execute-actions \
   --memory --read-mode faithful --memstore-dir ./memstore
 
 # Claude 공식 벤치 러너 유형2 (bash)
 PYTHONPATH=. uv run python scripts/python/run_multienv_claude.py \
-  --model claude-sonnet-5 --provider_name vmware --path_to_vm "vmware_vm_data/Ubuntu0/Ubuntu0.vmx" \
-  --observation_type screenshot --test_all_meta_path evaluation_examples/test_small.json \
+  --model claude-haiku-4-5 --provider_name vmware --path_to_vm "vmware_vm_data/<VM>/<VM>.vmx" \
+  --observation_type screenshot --test_all_meta_path evaluation_examples/<태스크셋>.json \
   --enable-bash-tool --num_envs 1 --max_steps 12 --result_dir ./results/claude/type2
 
 # OpenCUA 공격 시나리오
 PYTHONPATH=. uv run python redteam/run_opencua.py \
-  --scenario security_scenarios/ipi_001_visible_web_prompt/scenario.json \
+  --scenario security_scenarios/<시나리오>/scenario.json \
   --allow-external-screen-share --execute-actions
 ```

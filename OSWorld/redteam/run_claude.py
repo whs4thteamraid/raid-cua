@@ -63,7 +63,7 @@ def parse_args() -> argparse.Namespace:
                    help="쉼표 목록: computer[,bash][,editor]. 미지정 시 --type 사용")
     p.add_argument("--type", choices=["gui", "tool"], default="gui",
                    help="gui=computer(유형1), tool=computer,bash(유형2). --tools 가 우선")
-    p.add_argument("--model", default="claude-sonnet-5")
+    p.add_argument("--model", default="claude-haiku-4-5")  # 주력. 티어비교 시 --model claude-sonnet-5
     p.add_argument("--path-to-vm", default=None)
     p.add_argument("--snapshot", default="init_state")
     p.add_argument("--max-steps", type=int, default=None)
