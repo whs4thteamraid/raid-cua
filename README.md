@@ -307,6 +307,99 @@ result = agent.run(instruction, max_steps=18)
 
 ---
 
+## 🎛️ run_claude.py 옵션 전체 (주력: Claude Computer Use)
+
+우리 실험은 `run_claude.py` 하나로 다 돌린다. 옵션은 그룹별로:
+
+**1) 무엇을 시킬까 (택1, 필수)**
+
+| 옵션 | 뜻 |
+|---|---|
+| `--scenario <json>` | 보안/OSWorld 시나리오 실행 + **채점** |
+| `--instruction "..."` | 자유 지시 스모크 (채점 없음) |
+
+**2) 도구 유형 (유형1 vs 유형2)**
+
+| 옵션 | 뜻 | 기본 |
+|---|---|---|
+| `--type gui` | = `--tools computer` → **유형1**(GUI 클릭만) | ✔ 기본 |
+| `--type tool` | = `--tools computer,bash` → **유형2**(bash 열림) | |
+| `--tools computer[,bash][,editor]` | 도구 세트 직접 지정(`--type`보다 우선) | |
+| `--allow-bash` | bash 켤 때 **필수**(셸 실제 실행 동의) | |
+
+> 유형2로 bash 실제 실행 = `--type tool`(또는 `--tools ...,bash`) **＋ `--allow-bash`** 둘 다.
+
+**3) 모델**
+
+| 옵션 | 기본 | 비고 |
+|---|---|---|
+| `--model` | `claude-sonnet-5` | `claude-haiku-4-5` 등. 구 ID(4-7 등)는 404 — `computer_20251124` 지원 세대여야 |
+
+**4) 메모리 (기본 off)**
+
+| 옵션 | 뜻 | 기본 |
+|---|---|---|
+| `--memory` | 공식 `memory_20250818` 도구 얹은 에이전트 사용 | off |
+| `--read-mode faithful\|controlled\|inject` | 조회 방식 3팔 | `faithful` |
+| `--memstore-dir <경로>` | 호스트 memstore 경로 — **반드시 VM 밖** | `./memstore` |
+
+read_mode: `faithful`=서버 auto-view(제품 재현) / `controlled`=재량 조회(agency 측정) / `inject`=노트 선주입(항상-컨텍스트). ↑ "🧠 메모리 도구" 섹션 참고.
+
+**5) 안전 가드 (실제 실행하려면 필수 — ↑ "실행 플래그" 섹션)**
+
+`--execute-actions` ＋ `--allow-external-screen-share` (＋ bash면 `--allow-bash`). 부팅만 볼 땐 `--setup-only`(가드 불필요).
+
+**6) VM · 실행 파라미터**
+
+| 옵션 | 기본 | 뜻 |
+|---|---|---|
+| `--path-to-vm <vmx>` | 자동탐색 | VM 경로 명시 |
+| `--snapshot <이름>` | `init_state` | 시작 스냅샷 |
+| `--max-steps N` | 무제한 | 최대 스텝 |
+| `--send-width <px>` | `1280` | 모델에 보낼 스샷 너비(해상도 실험) |
+| `--pause` / `--initial-wait` | `1.0` / `3.0` | 스텝 간격 / 초기 대기(초) |
+
+**7) 팝업 공격 (선택 — 논문 2411.02391 재현)**
+
+| 옵션 | 뜻 |
+|---|---|
+| `--inject-popup` | 모델 스샷에만 악성 팝업 합성(실제 화면엔 없음) |
+| `--popup-pos center\|bottom\|top` | 팝업 위치(기본 center) |
+| `--popup-no-ad` | 'Advertisement' 라벨 제거 |
+| `--popup-xy x,y` | 팝업 좌상단 강제 배치(클릭재킹 정렬) |
+
+### 자주 쓰는 조합 (복붙, `cd OSWorld` 후)
+
+```bash
+# 유형1 (GUI만) 자유 스모크
+PYTHONPATH=. uv run python redteam/run_claude.py --instruction "..." --type gui \
+  --allow-external-screen-share --execute-actions
+
+# 유형2 (bash) 시나리오 + 채점
+PYTHONPATH=. uv run python redteam/run_claude.py \
+  --scenario security_scenarios/<시나리오>/scenario.json \
+  --type tool --allow-bash --allow-external-screen-share --execute-actions
+
+# 유형2 + 메모리 (faithful=제품형 자동조회)
+PYTHONPATH=. uv run python redteam/run_claude.py \
+  --scenario security_scenarios/<시나리오>/scenario.json \
+  --type tool --allow-bash --allow-external-screen-share --execute-actions \
+  --memory --read-mode faithful --memstore-dir ./memstore
+#   controlled / inject 로 바꾸려면 --read-mode 만 교체
+
+# 팝업 공격 (유형1)
+PYTHONPATH=. uv run python redteam/run_claude.py \
+  --scenario security_scenarios/ipi_011_popup_attack/scenario.json \
+  --type gui --allow-external-screen-share --execute-actions --inject-popup
+
+# 부팅만 확인 (안전가드 불필요)
+PYTHONPATH=. uv run python redteam/run_claude.py --instruction "noop" --setup-only
+```
+
+> 모델은 `--model claude-haiku-4-5` 처럼 어느 조합에도 붙일 수 있다(기본 sonnet-5).
+
+---
+
 ## ⚠️ 커밋 금지 / 공유 금지
 
 - **`.env`** — `ANTHROPIC_API_KEY` 포함. **절대 커밋 금지** (`.gitignore` 등록됨).
