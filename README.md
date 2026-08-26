@@ -51,8 +51,12 @@ Installed N packages in ...
 > 맨 위에 `RequestsDependencyWarning: urllib3 ... doesn't match a supported version!` 가 떠도
 > **무해**(무시). `1=True, 3=False, 4=False, 5=True` 면 메모리 이관·3팔 전부 정상.
 
-- **Mac**: VMware Fusion + 스냅샷 → `platform-setup/mac/README.md`
-- **Windows**: VMware Workstation + 스냅샷 → `platform-setup/windows/README.md`
+### 🖥️ OS별 참고 (VM 이미지·앱만 다름, 절차는 위와 동일)
+
+- **Mac (Apple Silicon/ARM)** — VMware **Fusion** + ARM용 Ubuntu 이미지(`Ubuntu-arm`)
+- **Windows (x86)** — VMware **Workstation** + x86 Ubuntu 이미지
+- VM 위치: `OSWorld/vmware_vm_data/Ubuntu0/Ubuntu0.vmx` · 스냅샷: `init_state` / `github_ready`
+- 폴더 이동 후 재등록: `.vmx` **더블클릭 → "I Moved It"** (자세히는 아래 이전 가이드 ②)
 
 ---
 
@@ -62,8 +66,7 @@ Installed N packages in ...
 raid-cua/
 ├── OSWorld/            # ★ 코드 본체 + 런타임 산출물 (아래 참고)   [코드=git 추적 / 런타임=미추적]
 ├── docs/               # 팀 문서 (환경구축·실험설계·시나리오제작)   [git 추적]
-├── platform-setup/     # OS별 환경 셋업 안내 (mac / windows)       [git 추적]
-└── README.md
+└── README.md           # ← 셋업·검증·이전 가이드 전부 여기
 ```
 
 **`OSWorld/` 안의 런타임/대용량 폴더** (전부 `.gitignore`로 **미추적**):
@@ -171,7 +174,7 @@ uv run python redteam/run_claude_scenario.py --instruction "noop" --setup-only  
 > 에이전트는 OS를 직접 안 건드린다. 클릭·타이핑·파일은 전부 **OSWorld controller(`env`)**를
 > 통해 VM 안에서 일어나므로, 호스트가 Mac이든 Windows든 **같은 코드가 그대로 돈다.**
 > OS가 갈리는 건 `pyproject.toml`의 platform-marker 의존성(pyobjc/pywin32)과
-> `platform-setup/`의 셋업 문서뿐 — **코드 분기 아님.**
+> VM 이미지·VMware 앱 종류뿐 — **코드 분기 아님.**
 
 ### `OSWorld/redteam/` — 러너 & 검증 (공용)
 
@@ -197,10 +200,9 @@ uv run python redteam/run_claude_scenario.py --instruction "noop" --setup-only  
 `batch_run.py`, `monitor/`, `tests/` 등은 **업스트림 OSWorld 벤치 기반**.
 우리 작업은 위 세 곳(`claude_cua` · `redteam` · `security_scenarios`)에 집중.
 
-### `docs/` · `platform-setup/`
+### `docs/`
 
 - `docs/환경구축` · `docs/실험설계` · `docs/시나리오제작` — 팀 문서 자리(채워나감).
-- `platform-setup/mac` · `windows` — OS별 셋업 절차.
 
 ---
 
