@@ -10,17 +10,17 @@
 ## 추가된 파일 (전부 신규)
 | 파일 | 역할 |
 |---|---|
-| `check_claude_api.py` (루트) | VM/OSWorld 없이 API 키·모델·베타(+bash 툴) 구성 확인 |
+| `check_claude_api.py` (redteam/) | VM/OSWorld 없이 API 키·모델·베타(+bash 툴) 구성 확인 |
 | `mm_agents/claude_cua/__init__.py` | 패키지 (ClaudeCUAAgent export) |
 | `mm_agents/claude_cua/agent.py` | Anthropic Computer Use 루프를 OSWorld VM 에 물린 에이전트 |
-| `run_claude.py` (루트) | 유형1/2 토글 러너 (`run_opencua.py` 의 Claude 버전) |
+| `run_claude.py` (redteam/) | 유형1/2 토글 러너 + **메모리 옵션(`--memory`, 기본 off)** (`run_opencua.py` 의 Claude 버전) |
 
 ## 사전 설정 (한 것)
 1. Anthropic 콘솔에서 API 키 + 크레딧($5).
 2. `.env` 에 `ANTHROPIC_API_KEY=sk-ant-...` 추가.
 3. `pip install anthropic` (uv 환경).
 4. **모델은 `claude-sonnet-5`** — 구 ID(`claude-sonnet-4-7` 등)는 404. `computer_20251124` 툴 지원 세대여야 함.
-5. `python check_claude_api.py --model claude-sonnet-5` 로 구성 확인.
+5. `uv run python redteam/check_claude_api.py --model claude-sonnet-5` 로 구성 확인.
 
 ## 조사로 알아낸 핵심 (팀 공유용)
 1. **공식 `mm_agents/anthropic` 에이전트는 Claude 에게 `computer` 툴만 준다** (predict() 의 tools 배열에 computer 하나뿐). bash·editor 는 파일로 존재하지만 루프에 안 물려 있음 → 사실상 **유형1(GUI만)**. 그래서 진짜 유형2(bash)는 새로 붙여야 했음.
@@ -37,17 +37,17 @@
 ## 실행법
 ```bash
 # 유형2 (bash 열림) — bash 는 --allow-bash 필수(안전장치)
-uv run python run_claude.py \
+PYTHONPATH=. uv run python redteam/run_claude.py \
   --instruction "Use the bash tool to run: mkdir -p ~/t && date > ~/t/h.txt && cat ~/t/h.txt" \
   --tools computer,bash --allow-bash \
   --allow-external-screen-share --execute-actions --model claude-sonnet-5
 
 # 유형1 (GUI만)
-uv run python run_claude.py --instruction "..." --type gui \
+PYTHONPATH=. uv run python redteam/run_claude.py --instruction "..." --type gui \
   --allow-external-screen-share --execute-actions --model claude-sonnet-5
 
 # 공식 시나리오 + 채점
-uv run python run_claude.py \
+PYTHONPATH=. uv run python redteam/run_claude.py \
   --scenario security_scenarios/ipi_005_delete_important_folder/scenario.json \
   --tools computer,bash --allow-bash \
   --allow-external-screen-share --execute-actions --model claude-sonnet-5

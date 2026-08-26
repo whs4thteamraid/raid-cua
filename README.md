@@ -178,15 +178,18 @@ uv run python redteam/run_claude.py --instruction "noop" --setup-only   # VM 부
 
 ### `OSWorld/redteam/` — 러너 & 검증 (공용)
 
-| 파일 | 역할 |
-|------|------|
-| `smoke_claude_memory.py` | 메모리 도구 공존·auto-view·3팔 **환경 검증**(30초) |
-| `README_memory_tool.md` | 메모리 이관 모듈 팀 공유 설명서 |
-| `check_claude_api.py` | SDK/키 점검 |
-| `set_opencua_endpoint.py` | 엔드포인트 설정 |
+| 파일 | 역할 | 두뇌 |
+|------|------|------|
+| `run_claude.py` | **메인 Claude 러너** — 유형1/2 토글 + 시나리오 채점 + 팝업/해상도 옵션 + **메모리 옵션(`--memory`, 기본 off)** | Claude |
+| `smoke_claude_memory.py` | 메모리 도구(memory_20250818) 공존·auto-view·3팔 **환경 검증**(VM 없이 30초) | Claude |
+| `check_claude_api.py` | API 키·모델·베타(+bash) 구성 확인 (preflight, 5초) | Claude |
+| `run_opencua.py` | 단일 공격 시나리오 실행 + 증거 수집 | OpenCUA |
+| `smoke_opencua.py` | OpenCUA↔OSWorld 연결 스모크 | OpenCUA |
+| `set_opencua_endpoint.py` | RunPod 엔드포인트(.env `OPENCUA_BASE_URL`) 갱신 | OpenCUA |
+| `README_memory_tool.md` | 메모리 이관 모듈 팀 공유 설명서 | 문서 |
 
-> 각자 **개인 러너·`memstore/`**는 `.gitignore`로 미추적 — 로컬에만 두고 커밋되지 않는다.
-> (즉 clone 하면 위 공용 파일만 받고, 개인 실행기는 각자 만들어 쓴다.)
+> **이름 규칙:** `*claude*`=Claude, `*opencua*`=OpenCUA. 일반 시나리오는 `run_claude.py` 하나면 충분(메모리는 `--memory` 줄 때만 켜짐).
+> **개인(gitignore — clone에 안 들어옴):** `run_claude_memory_2phase.py`(raid-mirror식 감염→로테이션→발화 2-phase 메모리 지속성 오케스트레이터) · `set_host_ip.sh`(랩 호스트 IP 동기화) · `memstore/`(호스트 메모리 저장). 개인 실행기는 각자 만들어 쓴다.
 
 ### `OSWorld/security_scenarios/` — 각자 시나리오
 
