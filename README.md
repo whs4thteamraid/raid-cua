@@ -19,6 +19,38 @@ uv run python mm_agents/claude_cua/memory_backend.py   # 백엔드 자체검증 
 uv run python redteam/smoke_memory.py                  # 공존·3팔 동작 확인
 ```
 
+### ✅ 이렇게 나오면 정상
+
+**`uv sync`** — 459개 resolve 후 설치. (torch 계열 커서 첫 설치는 몇 분 걸릴 수 있음)
+
+```
+Resolved 459 packages in ...
+Installed N packages in ...
+```
+
+**`memory_backend.py`** — 14줄 PASS 후 마지막 줄:
+
+```
+  [PASS] create
+  [PASS] view dir lists file
+  ... (총 14개)
+  [PASS] clear empties store
+모든 자체검증 통과 ✅
+```
+
+**`smoke_memory.py`** — TEST 1~5, 아래 값이 기대치 (확률적이라 애매하면 2~3회):
+
+```
+  ✓ TEST1 accepted = True        (computer+bash+memory 동시 선언 수락)
+  ● TEST2 auto_view  = True       (무관 태스크에도 스스로 memory view)
+  ● TEST3 auto_view  = False      (우리 프롬프트로 억제됨)
+  ● TEST4 view(benign) = False    (무관 태스크라 조회 안 함)
+  ● TEST5 view(cued)   = True     (회상 요구 태스크라 스스로 조회)
+```
+
+> 맨 위에 `RequestsDependencyWarning: urllib3 ... doesn't match a supported version!` 가 떠도
+> **무해**(무시). `1=True, 3=False, 4=False, 5=True` 면 메모리 이관·3팔 전부 정상.
+
 - **Mac**: VMware Fusion + 스냅샷 → `platform-setup/mac/README.md`
 - **Windows**: VMware Workstation + 스냅샷 → `platform-setup/windows/README.md`
 
@@ -74,15 +106,17 @@ git clone https://github.com/whs4thteamraid/raid-cua.git
 
 | 실제로 무엇 | 옛 위치 | 새 위치 |
 |---|---|---|
-| **개인 시나리오 — 폴더째로** (각 `ipi_XXX_*/`. 안의 `scenario.json`·`serve.py`·`webroot/`(html)·`phase2_*.json`·`exfil_*.jsonl`·README 전부 딸려옴) | `security_scenarios/ipi_XXX_*/` | `OSWorld/security_scenarios/ipi_XXX_*/` |
+| **자기 시나리오 — 폴더째로** (폴더 이름은 **자유** — 안의 `scenario.json`·`serve.py`·`webroot/`·설정·산출물 전부 딸려옴) | `security_scenarios/<자기 시나리오폴더>/` | `OSWorld/security_scenarios/<자기 시나리오폴더>/` |
 | **메인 `.env`** (ANTHROPIC_API_KEY) | `.env` | `OSWorld/.env` |
 | **VM 이미지·스냅샷** | `vmware_vm_data/` | `OSWorld/vmware_vm_data/` |
 | **옛 실험 결과** (보관하려면) | `security_results/` | `OSWorld/security_results/` |
 | **메모리 산출물** (있으면) | `redteam/memstore/` | `OSWorld/redteam/memstore/` |
-| **개인 러너** (자기 것, gitignore된 것) | `redteam/run_memory_scenario.py`·`set_host_ip.sh` | `OSWorld/redteam/` |
+| **자기 개인 러너·스크립트** (로컬에만 두던 것) | `redteam/<자기 러너>.py` 등 | `OSWorld/redteam/` |
 
-> **시나리오는 폴더 통째로** 옮기면 안에 뭐가 있든(html·서버·이미지·json·로그) 다 따라온다.
-> clone 하면 `security_scenarios/`는 골격(README·.gitkeep)만 있고 **비어있다** — 각자 자기 폴더를 넣는다.
+> **폴더 이름은 각자 다르다.** `security_scenarios/` **밑의 모든 하위 폴더가 gitignore**라
+> (이름 무관), clone 하면 이 폴더는 골격(README·.gitkeep)만 있고 **비어있다** —
+> 자기 시나리오 폴더를 **이름 그대로** 여기에 넣으면 된다. (예: 박규남=`ipi_025_*`, 다른 팀원=자기 명명)
+> **폴더 통째로** 옮기면 안에 뭐가 있든(html·서버·이미지·json·로그) 다 따라온다.
 > `.venv/`·`_handoff/`·`cache/`·`logs/`·`results/`는 **안 옮김** (`.venv`는 아래 `uv sync`로 새로,
 > 나머지는 스크래치라 실행하면 `OSWorld/` 밑에 새로 생김).
 
