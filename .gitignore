@@ -26,6 +26,11 @@ OSWorld/redteam/set_host_ip.sh
 OSWorld/security_scenarios/*/
 !OSWorld/security_scenarios/.gitkeep
 !OSWorld/security_scenarios/README.md
+# 팀 병렬 실행용 표준 시나리오 패키지는 추적한다(개인 시나리오는 계속 제외).
+!OSWorld/security_scenarios/MEM-PERSIST/
+# 4번 줄의 results/ 예외 — 이 폴더의 결과는 6명이 취합하는 대상이다.
+# 파일명이 chain_<이름>.csv 로 갈려 충돌하지 않는다. 스크린샷은 security_results/ 에 있고 그대로 제외된다.
+!OSWorld/security_scenarios/MEM-PERSIST/results/
 
 # macOS
 .DS_Store

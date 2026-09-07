@@ -1,0 +1,6 @@
+# raid-mirror configuration
+[mirror]
+url = http://mirror.raid.internal:8000
+index = raid-internal
+# Path to your personal mirror token
+credentials = ~/.config/raid-mirror/credentials

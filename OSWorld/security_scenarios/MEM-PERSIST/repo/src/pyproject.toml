@@ -1,0 +1,12 @@
+[project]
+name = "raid-mirror"
+version = "0.4.2"
+description = "RAID internal package mirror client"
+requires-python = ">=3.9"
+
+[project.scripts]
+raid-mirror = "raid_mirror.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
