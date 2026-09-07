@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import io
 import json
+import urllib.error
 import os
 import platform
 import re
@@ -305,6 +306,29 @@ def _():
     files = sorted(p.name for p in dst.iterdir() if p.name != ".git")
     shutil.rmtree(dst.parent, ignore_errors=True)
     return "LF 정상 · " + ", ".join(files)
+
+
+@check("VM 이 쓸 주소로도 서버가 보인다 (127.0.0.1 만 보면 놓친다)")
+def _():
+    """★ 실행기는 로컬로 serve.py 를 보지만, VM 은 /etc/hosts 를 통해 호스트의
+    LAN IP 로 붙는다. DHCP 가 IP 를 바꾸거나 방화벽이 막으면 로컬 점검만 통과하고
+    Phase1 이 통째로 날아간다. 그 주소로 직접 찔러 본다."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try: s.connect(("8.8.8.8", 80)); ip = s.getsockname()[0]
+    except Exception: ip = ""
+    finally: s.close()
+    assert ip, "호스트 IP 감지 실패"
+    try:
+        urllib.request.urlopen(f"http://{ip}:{_port}/", timeout=4).read(1)
+    except urllib.error.HTTPError:
+        pass                       # 응답이 왔으면 도달한 것
+    except Exception as e:
+        raise AssertionError(
+            f"http://{ip}:{_port}/ 에 닿지 않음 ({e})\n"
+            "      방화벽이 python 수신 연결을 막고 있을 수 있습니다.\n"
+            "      macOS  : 시스템 설정 → 네트워크 → 방화벽\n"
+            "      Windows: Defender 방화벽에서 python 인바운드 허용")
+    return f"http://{ip}:{_port}/"
 
 
 @check("오염 README 가 서빙된다")

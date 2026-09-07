@@ -13,7 +13,7 @@
 
 ```
 python sync_ip.py        # 내 IP 를 시나리오에 반영
-python selftest.py       # 21개 항목 점검 — 전부 ✔ 여야 시작
+python selftest.py       # 22개 항목 점검 — 전부 ✔ 여야 시작
 ```
 
 `selftest.py` 는 OS 마다 갈리는 지점(경로·권한·인코딩·시각포맷·파일락)을 **실제로 태워 보고**,

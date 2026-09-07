@@ -194,6 +194,55 @@ def count_fire():
         if TOKEN_V2 in line and '"event": "session_start"' in line: n += 1
     return n
 
+def host_ip() -> str:
+    """기본 경로로 나가는 인터페이스의 IP. 패킷은 보내지 않는다."""
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try: s.connect(("8.8.8.8", 80)); return s.getsockname()[0]
+    except Exception: return ""
+    finally: s.close()
+
+
+IPPAT = r"(?<![\d.])\d{1,3}(?:\.\d{1,3}){3}"
+HOSTS = ("mirror.raid.internal", "pkg-telemetry-cdn.net")
+
+
+def patch_ip(scen: dict, ip: str) -> dict:
+    """시나리오 안의 호스트 IP 를 **메모리에서** 현재 IP 로 갈아끼운다.
+
+    ★ 파일을 고치지 않는 것이 핵심이다. scenarios/*.json 은 git 추적 대상이라
+      실행마다 다시 쓰면 작업트리가 매번 더러워지고, 팀원이 git pull 할 때마다
+      충돌한다. 어차피 실행 시점에만 필요한 값이므로 dict 로 읽은 뒤 바꾼다.
+    """
+    import re
+    blob = json.dumps(scen, ensure_ascii=False)
+    blob = re.sub(IPPAT + r":8000", f"{ip}:8000", blob)          # URL 참조
+    for h in HOSTS:                                              # /etc/hosts 매핑
+        blob = re.sub(IPPAT + r" " + re.escape(h), f"{ip} {h}", blob)
+    return json.loads(blob)
+
+
+def preflight_network(ip: str) -> None:
+    """VM 이 실제로 쓰는 주소로 서버가 살아 있는지 확인한다.
+
+    ★ 127.0.0.1 로만 확인하면 안 된다. 실행기는 로컬로 serve.py 를 보지만
+      VM 은 /etc/hosts 를 통해 **호스트의 LAN IP** 로 접속한다. 방화벽이 막으면
+      로컬 점검은 통과하는데 VM 만 연결이 거부되어 Phase1 이 통째로 날아간다
+      (5분 + API 비용). 그래서 그 주소로 직접 찔러 본다.
+    """
+    try:
+        urllib.request.urlopen(f"http://{ip}:8000/", timeout=4).read(1)
+    except urllib.error.HTTPError:
+        pass                         # 응답이 왔으면 도달한 것 — 상태코드는 무관
+    except Exception as e:
+        sys.exit(f"✗ VM 이 쓸 주소 http://{ip}:8000/ 에 닿지 않습니다 ({e}).\n"
+                 "  serve.py 는 127.0.0.1 로는 보이는데 이 주소로는 안 보이는 상태입니다.\n"
+                 "  · serve.py 가 떠 있는지 (한 개만)\n"
+                 "  · macOS 방화벽이 python 수신 연결을 막고 있지 않은지\n"
+                 "    시스템 설정 → 네트워크 → 방화벽\n"
+                 "  · Windows Defender 방화벽에서 python 인바운드 허용 여부")
+
+
 def exfil_lines():
     """유출 로그 전체를 줄 리스트로. 시행 경계를 잘라내기 위한 기준."""
     if not EXFIL.exists(): return []
@@ -366,6 +415,16 @@ def main():
 
     p1 = json.loads((HERE / "scenarios" / "phase1_infect.json").read_text(encoding="utf-8"))
     p2 = json.loads((HERE / "scenarios" / f"A_{TASK}.json").read_text(encoding="utf-8"))
+
+    # ── IP 자동 반영 + 도달 확인 (VM 을 띄우기 **전에**) ──────────────
+    #   Wi-Fi 가 바뀌면 DHCP 가 호스트 IP 를 갈아치운다. 시나리오에 박힌 옛 주소로
+    #   VM 이 접속하면 Connection Refused 로 Phase1 이 통째로 날아간다.
+    ip = host_ip()
+    if not ip:
+        sys.exit("✗ 호스트 IP 를 감지하지 못했습니다. 네트워크 연결을 확인하세요.")
+    p1, p2 = patch_ip(p1, ip), patch_ip(p2, ip)
+    preflight_network(ip)
+    print(f"[+] 네트워크 확인: VM 이 쓸 http://{ip}:8000/ 도달 가능 (시나리오에 자동 반영)")
 
     CSV.parent.mkdir(parents=True, exist_ok=True)
     (CSV.parent / "notes").mkdir(exist_ok=True)
