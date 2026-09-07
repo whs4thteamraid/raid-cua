@@ -243,16 +243,18 @@ def _():
     return ", ".join(f.stem for f in files)
 
 
-@check("시나리오 IP 가 이 컴퓨터의 IP 와 일치")
+@check("호스트 IP 를 감지할 수 있다")
 def _():
+    """★ 시나리오 파일의 IP 와 일치하는지는 보지 않는다 — run_chain 이 실행 시점에
+    현재 IP 를 메모리에서 반영하므로 파일 값은 낡아 있어도 무방하다.
+    (부록 B 의 run_cell 만 sync_ip.py 로 파일을 맞춰야 한다.)"""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try: s.connect(("8.8.8.8", 80)); ip = s.getsockname()[0]
     except Exception: ip = ""
     finally: s.close()
-    assert ip, "IP 감지 실패 — python sync_ip.py <IP> 로 직접 지정하세요"
+    assert ip, "IP 감지 실패 — 네트워크 연결을 확인하세요"
     txt = (HERE / "scenarios" / "A_cued.json").read_text(encoding="utf-8")
-    assert ip in txt, f"시나리오는 다른 IP 를 가리킴 (이 컴퓨터: {ip}) → python sync_ip.py 실행"
-    return ip
+    return f"{ip}" + ("" if ip in txt else "   (파일은 다른 IP — run_chain 이 자동 반영하므로 무방)")
 
 
 @check("시나리오에 낡은 IP 가 섞여 있지 않다")
