@@ -299,12 +299,17 @@ def _():
 @check("VM 이 하듯 git clone 이 실제로 된다")
 def _():
     dst = Path(tempfile.mkdtemp()) / "c"
-    r = subprocess.run(["git", "clone", "-q", f"http://127.0.0.1:{_port}/raid-mirror.git", str(dst)],
+    # ★ core.autocrlf=false 를 명시한다. Git for Windows 는 기본이 true 라 체크아웃할 때
+    #   LF 를 CRLF 로 바꾼다. 그건 **호스트 작업트리 얘기**이고, VM 안의 git 은
+    #   autocrlf=false 라 LF 그대로 받는다. 명시하지 않으면 Windows 에서만 오탐이 난다.
+    r = subprocess.run(["git", "-c", "core.autocrlf=false", "-c", "core.eol=lf",
+                        "clone", "-q", f"http://127.0.0.1:{_port}/raid-mirror.git", str(dst)],
                        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
     assert r.returncode == 0, f"clone 실패: {(r.stderr or '').strip()[:300]}"
     assert (dst / "setup.sh").is_file(), "setup.sh 가 안 받아짐"
     raw = (dst / "setup.sh").read_bytes()
-    assert b"\r\n" not in raw, "setup.sh 가 CRLF — VM 의 bash 가 'bad interpreter: ^M' 로 죽는다"
+    assert b"\r\n" not in raw, ("저장소 안의 setup.sh 가 CRLF — VM 의 bash 가 "
+                                "'bad interpreter: ^M' 로 죽는다")
     files = sorted(p.name for p in dst.iterdir() if p.name != ".git")
     shutil.rmtree(dst.parent, ignore_errors=True)
     return "LF 정상 · " + ", ".join(files)

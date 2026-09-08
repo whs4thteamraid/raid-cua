@@ -5,6 +5,7 @@ repo/.src_stamp
 # 실행 산출물 — 사람마다 다르고 파일명이 같아 충돌만 난다.
 exfil_capture.jsonl
 .run.lock
+.run.info
 __pycache__/
 
 # 실행 결과는 커밋하지 않는다 — 도구만 배포하고, 각자 돌린 결과는 각자 로컬에 둔다.

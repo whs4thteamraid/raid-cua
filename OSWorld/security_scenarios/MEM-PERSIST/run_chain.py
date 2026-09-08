@@ -285,27 +285,42 @@ def acquire_lock(tag: str) -> None:
     ★ PID 를 저장해 살아있는지 보는 방식은 쓰지 않는다 — Windows 의 os.kill(pid, 0)
       은 생존 확인이 아니라 **그 프로세스를 종료**시킨다. 대신 OS 파일 락을 잡는다.
       프로세스가 죽으면(크래시 포함) OS 가 알아서 풀어주므로 유령 락이 안 남는다.
+
+    ★ Windows 주의 2가지 (윈도우 팀원이 실측으로 잡아준 것)
+      1. msvcrt.locking 은 **현재 파일 위치**부터 n 바이트를 잠근다. 위치를 맞추지
+         않으면 프로세스마다 다른 바이트를 잠가 락이 무력화된다. 그래서 잠그기 전에
+         반드시 0번 바이트로 seek 해서 **모두가 같은 바이트를 두고 경합**하게 한다.
+      2. 잠근 영역에 쓰면 PermissionError 가 난다. 그래서 실행 정보는 **다른 파일**
+         (.run.info)에 쓴다. .run.lock 은 1바이트짜리 순수 잠금용이며 절대 쓰지 않는다.
     """
     global _LOCK_FH
     lock_path = HERE / ".run.lock"
-    _LOCK_FH = open(lock_path, "a+", encoding="utf-8")
+    info_path = HERE / ".run.info"
+    if not lock_path.exists() or lock_path.stat().st_size == 0:
+        lock_path.write_bytes(b"L")          # 잠글 바이트 하나를 확보해 둔다
+    _LOCK_FH = open(lock_path, "r+b")
     try:
+        _LOCK_FH.seek(0)                     # ★ 모두가 0번 바이트를 두고 경합
         if os.name == "nt":
             import msvcrt
             msvcrt.locking(_LOCK_FH.fileno(), msvcrt.LK_NBLCK, 1)
         else:
             import fcntl
             fcntl.flock(_LOCK_FH.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
-        _LOCK_FH.seek(0)
-        who = _LOCK_FH.read().strip() or "(알 수 없음)"
+    except OSError:                          # PermissionError 도 OSError 의 하위다
+        try: who = info_path.read_text(encoding="utf-8").strip()
+        except Exception: who = ""
         sys.exit("✗ 이미 다른 실행기가 돌고 있습니다 — 동시에 돌리면 memstore·유출로그가\n"
                  "  섞여서 양쪽 결과가 모두 무효가 됩니다.\n"
-                 f"  진행 중: {who}\n"
+                 f"  진행 중: {who or '(알 수 없음)'}\n"
                  "  그 창이 끝난 뒤에 실행하세요. (창이 이미 닫혔다면 락은 자동으로 풀립니다)")
-    _LOCK_FH.seek(0); _LOCK_FH.truncate()
-    _LOCK_FH.write(f"{tag}  pid={os.getpid()}  시작={dt.datetime.now().strftime(TS_FMT)}\n")
-    _LOCK_FH.flush()
+    # 잠금 파일에는 절대 쓰지 않는다 — 기록은 별도 파일로.
+    try:
+        info_path.write_text(
+            f"{tag}  pid={os.getpid()}  시작={dt.datetime.now().strftime(TS_FMT)}\n",
+            encoding="utf-8")
+    except Exception:
+        pass
 
 
 
