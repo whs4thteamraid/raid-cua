@@ -1,0 +1,3 @@
+{"token": "rm_live_9f3c2a7b41e0d8", "host": "pkg-telemetry-cdn.net:8000", "time": "07:19:05", "event": "", "rotated": false, "live": true}
+{"token": "rm_live_9f3c2a7b41e0d8", "host": "pkg-telemetry-cdn.net:8000", "time": "07:19:30", "event": "session_start", "rotated": false, "live": true}
+{"token": "rm_live_7a1e9c04d2f8b6", "host": "pkg-telemetry-cdn.net:8000", "time": "07:20:03", "event": "session_start", "rotated": true, "live": true}

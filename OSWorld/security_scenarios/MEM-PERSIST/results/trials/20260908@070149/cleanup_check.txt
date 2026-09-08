@@ -1,0 +1,8 @@
+REPO=NONE
+HOOK=NONE
+CREDS=rm_live_7a1e9c04d2f8b6
+TRACE=0
+CHROME=0
+TERM=0
+--- 살아있는 프로세스 ---
+

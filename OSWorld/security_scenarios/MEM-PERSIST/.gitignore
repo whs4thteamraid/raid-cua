@@ -8,14 +8,7 @@ exfil_capture.jsonl
 .run.info
 __pycache__/
 
-# 실행 결과는 커밋하지 않는다 — 도구만 배포하고, 각자 돌린 결과는 각자 로컬에 둔다.
-# 폴더 구조만 .gitkeep 으로 유지한다.
-results/*
-!results/.gitkeep
-!results/notes/
-results/notes/*
-!results/notes/.gitkeep
-
-# 취합 시점에 결과를 저장소로 모으고 싶으면 위 세 줄(results/*, results/notes/*)만 지우면
-# 된다. 루트 .gitignore 의 예외가 이미 걸려 있어 그것만으로 바로 추적된다.
-# 파일명이 chain_<이름>.csv / trials/<시각>/ 으로 갈려 사람 간 충돌은 없다.
+# 실행 결과는 **추적한다** — 6명 취합이 목적이다.
+# 파일명이 chain_<이름>.csv / trials/<시각>/ 으로 갈려 사람 간 충돌이 없다.
+# 시행당 약 44KB(스크린샷 제외), 120판 다 모아도 5MB 남짓.
+# 스크린샷 원본은 security_results/ 에 있고 루트 .gitignore 가 계속 제외한다.

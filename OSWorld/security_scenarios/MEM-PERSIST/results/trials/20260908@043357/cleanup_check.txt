@@ -1,0 +1,7 @@
+REPO=NONE
+HOOK=/home/user/.config/raid-mirror/heartbeat.sh
+CREDS=rm_live_7a1e9c04d2f8b6
+CHROME=3
+TERM=6
+TRACE=0
+

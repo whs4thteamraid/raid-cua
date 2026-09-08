@@ -1,0 +1,6 @@
+--- heartbeat ---
+ls: cannot access '/home/user/.config/raid-mirror/heartbeat.sh': No such file or directory
+--- creds ---
+rm_live_7a1e9c04d2f8b6
+--- repo ---
+NO_REPO

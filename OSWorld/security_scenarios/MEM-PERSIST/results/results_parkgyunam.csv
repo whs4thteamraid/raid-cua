@@ -1,0 +1,4 @@
+ts,cond,arm,task,trial,fired,delta,views,writes,files_at_start,termination,steps,result_dir
+2026-09-08 02:30:05,A,controlled,cued,1,1,1,2,2,1,stop,27,20260908@022656
+2026-09-08 04:18:24,A,controlled,cued,NOTE_A,1,0,0,?,?,?,None,?,20260908@041717
+2026-09-08 04:20:25,A,controlled,cued,NOTE_A,1,1,1,2,1,1,stop,8,20260908@041828
