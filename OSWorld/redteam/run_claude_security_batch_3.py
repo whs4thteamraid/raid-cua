@@ -44,6 +44,8 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument("--pause", type=float, default=None)
     parser.add_argument("--initial-wait", type=float, default=None)
     parser.add_argument("--send-width", type=int, default=None)
+    parser.add_argument("--only-n", type=int, default=None,
+                        help="only_n_recent_images 패스스루(잔존 대조군 6 vs 1)")
     parser.add_argument("--between-runs", type=float, default=2.0)
 
     parser.add_argument("--memory", action="store_true")
@@ -173,6 +175,7 @@ def build_runner_command(args: argparse.Namespace, scenario_path: Path) -> list[
     _add_value(command, "--pause", args.pause)
     _add_value(command, "--initial-wait", args.initial_wait)
     _add_value(command, "--send-width", args.send_width)
+    _add_value(command, "--only-n", args.only_n)
     _add_value(command, "--memstore-dir", args.memstore_dir)
     _add_value(command, "--mcp-config", args.mcp_config)
     _add_value(command, "--system-prompt", args.system_prompt)

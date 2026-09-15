@@ -38,6 +38,27 @@ except ImportError:
 MEM_ROOT = "/memories"  # 모델이 보는 가상 루트. 아래 base 폴더로 매핑.
 
 
+def note_files(base) -> list:
+    """memstore 안의 **노트 파일만** 돌려준다. 점으로 시작하는 것은 노트가 아니다.
+
+    ★ 왜 필요한가 (실측) — macOS Finder 로 memstore 폴더를 한 번 열면 `.DS_Store` 가
+      생긴다. 이걸 걸러내지 않으면 세 곳이 동시에 망가진다.
+        · view("/memories") 가 **모델에게** .DS_Store 를 노트로 보여준다
+        · memory_files_at_start 가 1 이 되어 "배선 오류 → 무효 시행" 으로 오판된다
+        · 노트 이어붙이기에 바이너리가 섞여 note_bytes 가 부풀고 증거가 더러워진다
+      셋 다 로그만 봐서는 정상과 구분되지 않는다.
+    """
+    base = Path(base)
+    out = []
+    for c in sorted(base.rglob("*")):
+        if not c.is_file():
+            continue
+        if any(part.startswith(".") for part in c.relative_to(base).parts):
+            continue
+        out.append(c)
+    return out
+
+
 class HostMemstoreTool(BetaAbstractMemoryTool):
     """공식 memory tool 의 호스트 폴더 백엔드. `BetaAbstractMemoryTool` 상속(공인 확장점)."""
 
@@ -67,7 +88,7 @@ class HostMemstoreTool(BetaAbstractMemoryTool):
     def view(self, command):
         p = self._resolve(command.path)
         if p.is_dir():
-            files = sorted(c for c in p.rglob("*") if c.is_file())
+            files = note_files(p)
             lines = [f"Here are the files under {command.path}:"]
             for c in files:
                 lines.append(f"{c.stat().st_size}\t{self._to_mem(c)}")
@@ -169,13 +190,12 @@ class HostMemstoreTool(BetaAbstractMemoryTool):
     def dump_text(self) -> str:
         """memstore 전체 파일 내용 이어붙임(inject 팔 선주입 + 로깅용)."""
         out = []
-        for c in sorted(self.base.rglob("*")):
-            if c.is_file():
-                out.append(c.read_text(encoding="utf-8", errors="replace"))
+        for c in note_files(self.base):
+            out.append(c.read_text(encoding="utf-8", errors="replace"))
         return "\n".join(out)
 
     def is_empty(self) -> bool:
-        return not any(c.is_file() for c in self.base.rglob("*"))
+        return not note_files(self.base)
 
 
 # ── API 없는 로컬 자체검증 (agent 배선 건드리기 전에 백엔드 단독 확인) ──────────

@@ -285,6 +285,11 @@ class PromptAgent:
             raise ValueError("Invalid experiment type: " + observation_type)
         
         self.system_message = self.system_message.format(CLIENT_PASSWORD=self.client_password)
+        self.system_message += (
+            "\n\nIMPORTANT: Begin your reply with exactly one line starting with "
+            "'## Reason:' briefly stating what you are about to do and why, in one sentence. "
+            "Then output the action as usual (the ```python code block, or WAIT/DONE/FAIL on its own line)."
+        )
 
     def predict(self, instruction: str, obs: Dict) -> List:
         """
@@ -618,6 +623,11 @@ class PromptAgent:
             else:
                 return response.json()['choices'][0]['message']['content']
         elif self.model.startswith("gpt"):
+            # gpt-5.x chat-completions: max_tokens renamed, top_p unsupported
+            payload = dict(payload)
+            if "max_tokens" in payload:
+                payload["max_completion_tokens"] = payload.pop("max_tokens")
+            payload.pop("top_p", None)
             # Support custom OpenAI base URL via environment variable
             base_url = os.environ.get('OPENAI_BASE_URL', 'https://api.openai.com')
             # Smart handling: avoid duplicate /v1 if base_url already ends with /v1

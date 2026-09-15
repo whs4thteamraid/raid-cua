@@ -1,0 +1,131 @@
+From:    ksasha@ajou.ac.kr
+To:      yuanmengqi732@gmail.com, tianbaoxiexxx@gmail.com, zzl0712@connect.hku.hk
+Subject: Private security report — guest-controlled code executed with evaluator privileges (OSWorld 1.0 & 2.0)
+
+Attachments (8):
+  OSWorld_security_report.pdf
+  OSWorld_security_report.md
+  F2_call_flow_evidence.md
+  f2_upstream_verify.py
+  classify_tasks.py
+  hf_test.py
+  settings_original.py
+  MANIFEST.txt
+
+================================ 본문 여기부터 ================================
+
+Dear OSWorld maintainers,
+
+My name is PARK Gyu-nam. I am a trainee on Team RAID at WhiteHat School (4th
+cohort), a security training programme operated by KISA, the Korea Internet &
+Security Agency. Our project is an attack-surface analysis and red teaming of
+computer-use agents. I am writing in a personal research capacity — this is not
+an official communication from KISA — to report a security issue in OSWorld
+privately, before any public discussion.
+
+In short: the official evaluation path copies Python files that the agent can
+modify inside the guest VM into the evaluation environment, then executes them
+(check_python_file_by_test_suite). Code whose content is controlled from inside
+the guest therefore runs with the privileges of the evaluation process. In the
+documented default deployment that process runs on the host.
+
+This affects both current releases:
+
+  - xlang-ai/OSWorld @ fc31a90 (= main)
+      metrics/vscode.py:258, executed in a child process
+  - xlang-ai/OSWorld-V2 @ 1c81bd34 (= main)
+      metrics/vscode.py:304, executed in-process, with no subprocess boundary
+
+The same two task definitions carry the path in both repositories
+(9219480b-… and 26150609-…), byte-identical.
+
+I reproduced this on a clean clone of OSWorld 1.0 at fc31a90 with zero patches,
+using the unmodified tetris task. No task-config tampering or exploitation
+primitive was needed — only the file edit the task itself asks the agent to
+make. The evaluator returned its normal score, so the run left no anomaly in
+the grading log. For OSWorld 2.0 I verified the identical code path and task
+configuration by inspection but did not run it, and the report says so.
+
+Where to start: OSWorld_security_report.pdf. It is self-contained and takes
+about ten minutes; everything else is supporting material it references. If you
+only read one thing, read section 3 (the call flow, with line numbers) and
+section 4 (how to reproduce it). Section 8A is a self-verification procedure you
+can run against a fresh clone in a couple of minutes without touching a VM.
+
+The remaining attachments, in the order the report cites them:
+
+  F2_call_flow_evidence.md   line-number audit table, full verification procedure
+  f2_upstream_verify.py      the reproduction script (section 4)
+  classify_tasks.py          reproduces the impact counts in sections 2 and 6
+  hf_test.py                 preserved copy of a file the report hashes
+  settings_original.py       preserved copy of a file the report hashes
+  MANIFEST.txt               sha256 for all of the above, so you can confirm
+                             nothing changed in transit
+  OSWorld_security_report.md the report again as plain text, if you want to
+                             copy the verification commands
+
+The payload used in the reproduction only writes a canary file — no network
+activity and no persistence.
+
+Before writing I looked for a private reporting channel: there is no
+SECURITY.md in either repository, and GitHub private vulnerability reporting is
+not enabled (/security/advisories/new is unavailable). That is why I am writing
+to you directly. If you enable private vulnerability reporting, or prefer
+another channel, tell me and I will move there immediately — I would rather
+this be tracked in a place that suits you.
+
+I propose a 90-day coordinated disclosure window and am happy to adjust to
+whatever suits you.
+
+On the CVE: I intend to request an identifier, and I would rather coordinate
+with you than act on my own. If you would like to file it yourselves — a GitHub
+Security Advisory would do it, with GitHub as CNA — please go ahead; I would
+only ask that the advisory credit me as "PARK Gyu-nam, Team RAID — WhiteHat
+School (KISA)" and that you add me as a collaborator on the draft so I can
+check the technical details first. If you would rather not, or if nothing has
+been filed by day 45, I will request one through MITRE, name you as the vendor,
+and send you the text for review beforehand. Either way I will not publish
+before the agreed date or before a fix is available, whichever comes first.
+
+Two things about timing, both mentioned in advance rather than afterwards.
+
+My training programme holds an internal results presentation on 17 October
+2026, day 40 of the proposed window. I am raising it before we agree the window
+rather than after.
+
+The audience is programme participants and staff and it is not a public event,
+but I should be straight with you about the limits of that: the session may be
+recorded for the programme's internal use, and attendees are not under a
+confidentiality agreement. I will not post slides or materials publicly before
+the coordinated date.
+
+I would like to present the analysis method, the measured results, and the
+disclosure process. Unless you tell me otherwise, I will hold back anything
+that would let someone reproduce the issue — payload, reproduction script,
+step-by-step chain — and present it at a level that does not enable
+reproduction. If you are comfortable with more, tell me; if you would prefer
+less, tell me that. Absent a reply I default to the restrictive option.
+
+Separately, I may publish part of this work — the agent-behaviour findings, not
+the vulnerability mechanics — in an academic paper on computer-use-agent
+security. That is not decided yet. If it happens, I would share a draft with
+you beforehand.
+
+If you would like to be acknowledged in anything I publish about this, tell me
+how you would like to be named.
+
+Thank you for OSWorld — the benchmark has been valuable for our research, and I
+hope this report is useful.
+
+Best regards,
+
+PARK Gyu-nam (박규남)
+Ajou University · Team RAID, WhiteHat School 4th cohort (KISA)
+ksasha@ajou.ac.kr  (backup: kevin965546184644@gmail.com)
+
+================================= 본문 여기까지 =================================
+
+발송 직후 할 일
+  1. 발송 시각 기록 → D+0
+  2. 보낸편지함에서 첨부 8개가 실제로 붙었는지 확인
+  3. 팀·멘토에게 발송 완료 알림

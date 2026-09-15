@@ -182,23 +182,34 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
     active_environments = []
     env = None
     try:
-        from desktop_env.providers.aws.manager import IMAGE_ID_MAP
-        REGION = args.region
         screen_size = (args.screen_width, args.screen_height)
-        ami_id = IMAGE_ID_MAP[REGION].get(screen_size, IMAGE_ID_MAP[REGION][(1920, 1080)])
-        env = DesktopEnv(
-            path_to_vm=args.path_to_vm,
-            action_space=args.action_space,
-            provider_name=args.provider_name,
-            region=REGION,
-            snapshot_name=ami_id,
-            screen_size=screen_size,
-            headless=args.headless,
-            os_type="Ubuntu",
-            require_a11y_tree=args.observation_type in ["a11y_tree", "screenshot_a11y_tree", "som"],
-            enable_proxy=True,
-            client_password=args.client_password
-        )
+        if args.provider_name == "aws":
+            from desktop_env.providers.aws.manager import IMAGE_ID_MAP
+            REGION = args.region
+            ami_id = IMAGE_ID_MAP[REGION].get(screen_size, IMAGE_ID_MAP[REGION][(1920, 1080)])
+            env = DesktopEnv(
+                path_to_vm=args.path_to_vm,
+                action_space=args.action_space,
+                provider_name=args.provider_name,
+                region=REGION,
+                snapshot_name=ami_id,
+                screen_size=screen_size,
+                headless=args.headless,
+                os_type="Ubuntu",
+                require_a11y_tree=args.observation_type in ["a11y_tree", "screenshot_a11y_tree", "som"],
+                enable_proxy=True,
+                client_password=args.client_password
+            )
+        else:
+            env = DesktopEnv(
+                provider_name=args.provider_name,
+                path_to_vm=args.path_to_vm,
+                action_space=args.action_space,
+                screen_size=screen_size,
+                headless=args.headless,
+                os_type="Ubuntu",
+                require_a11y_tree=args.observation_type in ["a11y_tree", "screenshot_a11y_tree", "som"],
+            )
         active_environments.append(env)
         
         logger.info(f"Process {current_process().name} started.")

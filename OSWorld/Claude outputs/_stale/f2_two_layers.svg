@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="600" viewBox="0 0 1000 600" font-family="-apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif">
+  <defs>
+    <marker id="m" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L10,4 L0,8 z" fill="#475569"/>
+    </marker>
+  </defs>
+  <rect width="1000" height="600" fill="#ffffff"/>
+  <text x="40" y="36" font-size="17" font-weight="700" fill="#0f172a">"테트리스 전용 채점기"는 사실 두 층이다</text>
+
+  <!-- 왼쪽: 엔진 -->
+  <rect x="40" y="62" width="440" height="330" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="2.5"/>
+  <text x="60" y="90" font-size="15" font-weight="700" fill="#991b1b">A층. 채점 엔진 — 모든 태스크 공용</text>
+  <text x="60" y="112" font-size="12.5" fill="#7f1d1d">OSWorld 코드 안에 있다 · 태스크가 바뀌어도 안 바뀐다</text>
+
+  <rect x="60" y="128" width="400" height="34" rx="6" fill="#ffffff" stroke="#dc2626" stroke-width="1.5"/>
+  <text x="74" y="150" font-size="12" font-family="monospace" fill="#0f172a">metrics/vscode.py : 258행</text>
+
+  <rect x="60" y="172" width="400" height="150" rx="6" fill="#0f172a"/>
+  <text x="74" y="194" font-size="11.5" font-family="monospace" fill="#94a3b8">check_python_file_by_test_suite()</text>
+  <text x="74" y="220" font-size="11.5" font-family="monospace" fill="#fca5a5">test_dir = 게스트 파일이 든 폴더</text>
+  <text x="74" y="240" font-size="11.5" font-family="monospace" fill="#fca5a5">sys.path.insert(0, test_dir)</text>
+  <text x="74" y="260" font-size="11.5" font-family="monospace" fill="#fca5a5">exec_module(module)</text>
+  <text x="74" y="290" font-size="11" font-family="monospace" fill="#fbbf24">▲ 취약점은 전부 여기 있다</text>
+  <text x="74" y="308" font-size="11" font-family="monospace" fill="#94a3b8">테트리스라는 단어는 한 번도 안 나온다</text>
+
+  <text x="60" y="348" font-size="12.5" font-weight="700" fill="#991b1b">테트리스 태스크에서도, 스네이크 태스크에서도,</text>
+  <text x="60" y="370" font-size="12.5" font-weight="700" fill="#991b1b">앞으로 추가될 코딩 태스크에서도 똑같이 이 코드가 돈다.</text>
+
+  <!-- 오른쪽: 데이터 -->
+  <rect x="520" y="62" width="440" height="330" rx="10" fill="#f0f9ff" stroke="#0284c7" stroke-width="2"/>
+  <text x="540" y="90" font-size="15" font-weight="700" fill="#075985">B층. 채점 내용 — 태스크마다 다름</text>
+  <text x="540" y="112" font-size="12.5" fill="#0369a1">HuggingFace 에서 받아온다 · 그냥 데이터다</text>
+
+  <rect x="540" y="128" width="400" height="34" rx="6" fill="#ffffff" stroke="#0284c7" stroke-width="1.5"/>
+  <text x="554" y="150" font-size="11" font-family="monospace" fill="#0f172a">.../9219480b-.../test.py  →  test_suite.py</text>
+
+  <rect x="540" y="172" width="400" height="150" rx="6" fill="#0f172a"/>
+  <text x="554" y="194" font-size="11.5" font-family="monospace" fill="#94a3b8">test_suite.py (테트리스용)</text>
+  <text x="554" y="220" font-size="11.5" font-family="monospace" fill="#fbbf24">from tetris import Tetris</text>
+  <text x="554" y="240" font-size="11.5" font-family="monospace" fill="#fbbf24">from settings import BOARD_HEIGHT</text>
+  <text x="554" y="266" font-size="11.5" font-family="monospace" fill="#cbd5e1">def test():</text>
+  <text x="554" y="286" font-size="11.5" font-family="monospace" fill="#cbd5e1">    game.rotate()</text>
+  <text x="554" y="306" font-size="11.5" font-family="monospace" fill="#cbd5e1">    if game.intersect(): return False</text>
+
+  <text x="540" y="348" font-size="12.5" fill="#0c4a6e">이 파일은 벤치마크가 준 것이라 신뢰 대상이다.</text>
+  <text x="540" y="370" font-size="12.5" fill="#0c4a6e">sha256 대조 완료 — 원본 그대로다.</text>
+
+  <!-- 하단 결론 -->
+  <rect x="40" y="418" width="920" height="150" rx="10" fill="#fffbeb" stroke="#d97706" stroke-width="2"/>
+  <text x="62" y="448" font-size="14.5" font-weight="700" fill="#92400e">그래서 "테트리스 전용이라서 그런 것"이 아니다</text>
+  <text x="62" y="478" font-size="13" fill="#78350f">· B층(테트리스 테스트)은 <tspan font-weight="700">무엇을 검사할지</tspan>만 정한다. 회전이 깨지나, 충돌이 나나.</text>
+  <text x="62" y="502" font-size="13" fill="#78350f">· A층(엔진)이 <tspan font-weight="700">어디서 어떻게 실행할지</tspan>를 정한다. 게스트 파일 폴더를 sys.path 1순위로 놓고 호스트에서 import.</text>
+  <text x="62" y="526" font-size="13" fill="#78350f">· 위험한 결정은 전부 A층에서 내려진다. B층을 스네이크로 바꿔도, 새 태스크로 바꿔도 그대로다.</text>
+  <text x="62" y="552" font-size="13" font-weight="700" fill="#92400e">→ 고쳐야 할 곳도 A층이다. 테스트 파일을 아무리 고쳐도 안 없어진다.</text>
+</svg>

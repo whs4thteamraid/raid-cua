@@ -27,7 +27,7 @@ import os
 from typing import Any, Dict, List, Optional
 
 from .agent import ClaudeCUAAgent
-from .memory_backend import HostMemstoreTool
+from .memory_backend import HostMemstoreTool, note_files
 
 # 공식 메모리 6커맨드(이름이 base editor 와 겹치므로 /memories 경로로 구분).
 _MEM_COMMANDS = {"view", "create", "str_replace", "insert", "delete", "rename"}
@@ -106,7 +106,7 @@ class MemoryClaudeCUAAgent(ClaudeCUAAgent):
         self._memory_writes = 0
         self._recalled_via_tool = False
         files_at_start = 0 if self.memory.is_empty() else len(
-            [c for c in self.memory.base.rglob("*") if c.is_file()])
+            note_files(self.memory.base))
         saved_sys = self.system_prompt
         try:
             if self.read_mode == "faithful":

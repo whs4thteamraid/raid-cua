@@ -454,7 +454,7 @@ uv run python security_scenarios/MEM-PERSIST/run_chain.py controlled cued 5
 | `VMRUN_BIN` | `vmrun` | 스냅샷 스크립트용 vmrun 경로 (PATH 등록을 대체하지 않음) |
 | `NAME` | 계정명 | 결과 CSV 파일명 |
 | `SERVER` | `http://127.0.0.1:8000` | serve.py 주소 |
-| `MEMSTORE_DIR` | `redteam/memstore_mem_persist` | 메모리 저장 위치 |
+| `MEMSTORE_DIR` | `redteam/memstore` | memstore 경로의 **앞부분**. 실제 경로는 `<이 값>_<모델키>` (예: `redteam/memstore_kimi`) — 세 모델이 한 폴더를 돌려쓰다 정리가 한 번 실패하면 노트가 섞이기 때문. 모델이 보는 경로는 언제나 `/memories` 라 조건 차이는 없다 |
 
 ### Wi-Fi 가 바뀌어 IP 가 달라지면
 

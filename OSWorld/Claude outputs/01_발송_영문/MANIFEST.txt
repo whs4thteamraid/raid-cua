@@ -1,0 +1,15 @@
+OSWorld security disclosure — attachment manifest
+Reporter : PARK Gyu-nam (ksasha@ajou.ac.kr)
+Date     : 2026-09-07
+Subject  : xlang-ai/OSWorld @ fc31a9049664292fcb35d6e501ee1dc839f2cf6d
+           xlang-ai/OSWorld-V2 @ 1c81bd34b2cbbb50d8db5b6948a956870e8e707c
+
+Verify with:  shasum -a 256 -c MANIFEST.txt
+
+67497b4a333a593a0e25229f68109f3a168dc84a5a9f803fdd375a94068e5a70  OSWorld_security_report.pdf
+380b79461a5938a1179e4badc65e1e21f6e9a9e870f0644cd0a89aae49d5425e  OSWorld_security_report.md
+b4cb841f4d7e0a9bb205be36cccb5274ec84fb7fec54c1e1a76920c6fcbbaddb  F2_call_flow_evidence.md
+27b4aef1e3be8500b6dfae0362782ee5be35aa069ee92f481054015d5bf4c616  f2_upstream_verify.py
+1c73c2ea1531157789fe49dd5e19d8c68ba21d878fcd209941356a7cdd5334dd  classify_tasks.py
+b266e83242c035256b9a6b0904615318e5bb90fd7ef19f8648a9503e7a96c9ff  hf_test.py
+fca04a7cc2e995f756bf9515d847d42b7447948ae53a4fbcde636f5bac2b5c13  settings_original.py

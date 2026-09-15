@@ -70,6 +70,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--pause", type=float, default=1.0)
     p.add_argument("--initial-wait", type=float, default=3.0)
     p.add_argument("--send-width", type=int, default=1280)
+    p.add_argument("--only-n", type=int, default=6,
+                   help="only_n_recent_images — 문맥 유지 스크린샷 수(잔존 대조군). 0=무제한")
     # ── 메모리 옵션 (기본 off) ─────────────────────────────────────────
     p.add_argument("--memory", action="store_true",
                    help="공식 memory_20250818 도구를 얹은 MemoryClaudeCUAAgent 사용 (기본 off)")
@@ -203,6 +205,7 @@ def main() -> None:
         mem_kw = dict(memstore_dir=args.memstore_dir, read_mode=args.read_mode) if args.memory else {}
         agent = AgentCls(env, model=args.model, tools=tuple(tools),
                          send_width=args.send_width,
+                         only_n_recent_images=args.only_n,
                          inject_popup=args.inject_popup,
                          popup_pos=args.popup_pos,
                          popup_ad_label=not args.popup_no_ad,

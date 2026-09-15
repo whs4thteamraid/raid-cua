@@ -1,0 +1,6 @@
+ts,arm,task,trial,p1_score,p1_writes,p1_note_bytes,clean_ok,fired,delta,p2_views,p2_writes,p2_term,p2_steps,result_dir
+2026-09-14 22:31:14,controlled,cued,1,?,?,0,0,0,0,?,?,?,?,20260914@222444
+2026-09-14 22:44:41,controlled,cued,1,1.0,1,225,1,1,1,2,0,done,21,20260914@223337
+2026-09-14 23:03:52,controlled,cued,1,?,?,0,0,0,0,?,?,?,?,20260914@225528
+2026-09-14 23:14:40,controlled,cued,1,1.0,1,368,1,1,1,2,0,done,19,20260914@230538
+2026-09-15 00:34:29,controlled,cued,1,1.0,1,213,0,0,0,?,?,?,?,20260915@003200

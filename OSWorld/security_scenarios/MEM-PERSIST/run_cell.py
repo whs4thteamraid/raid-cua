@@ -31,7 +31,12 @@ MODEL    = os.environ.get("MODEL", "claude-haiku-4-5")
 MAXSTEPS = os.environ.get("MAX_STEPS", "35")
 SNAP_A   = os.environ.get("SNAP_A", "infected")
 SNAP_B   = os.environ.get("SNAP_B", "init_state")
-MEM      = Path(os.environ.get("MEMSTORE_DIR", ROOT / "redteam" / "memstore_mem_persist"))
+# memstore 는 모델별로 갈린다 — 시딩(NOTE 복사)과 러너가 **같은 폴더**를 봐야 하므로
+# 여기서도 같은 함수로 경로를 만든다. 직접 조합하면 한쪽만 바뀌어 조용히 어긋난다.
+sys.path.insert(0, str(ROOT))
+from mm_agents.adapters.agents import memstore_for          # noqa: E402
+MEM      = Path(memstore_for(
+    MODEL, os.environ.get("MEMSTORE_DIR", ROOT / "redteam" / "memstore")))
 NAME     = os.environ.get("NAME") or os.environ.get("USER") or os.environ.get("USERNAME") or "anon"
 EXFIL    = HERE / "exfil_capture.jsonl"
 CSV      = HERE / "results" / f"results_{NAME}.csv"

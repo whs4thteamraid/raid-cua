@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="620" viewBox="0 0 960 620" font-family="-apple-system, 'Helvetica Neue', 'Apple SD Gothic Neo', sans-serif">
+  <rect width="960" height="620" fill="#fbfaf8"/>
+
+  <text x="30" y="36" font-size="18" font-weight="700" fill="#1a1a1a">같은 파일, 두 가지 다루는 법</text>
+  <text x="30" y="58" font-size="12.5" fill="#6b6b6b">파이썬에서 파일을 &quot;읽는 것&quot;과 &quot;import 하는 것&quot;은 전혀 다른 일이다.</text>
+
+  <!-- the file -->
+  <rect x="300" y="82" width="360" height="150" rx="9" fill="#fff" stroke="#c9c2b4" stroke-width="1.5"/>
+  <text x="316" y="104" font-size="12" font-weight="700" fill="#4a4a4a">settings.py — 에이전트가 VM 안에서 쓴 파일</text>
+
+  <rect x="314" y="114" width="332" height="42" rx="5" fill="#fdf0ef" stroke="#e8b5b0"/>
+  <text x="324" y="132" font-size="10.5" font-family="ui-monospace, Menlo, monospace" fill="#8c3a3a">import subprocess</text>
+  <text x="324" y="148" font-size="10.5" font-family="ui-monospace, Menlo, monospace" fill="#8c3a3a">subprocess.Popen([...])   ← 명령어. 실행되는 것</text>
+
+  <rect x="314" y="164" width="332" height="56" rx="5" fill="#f2f6fc" stroke="#cfe0f2"/>
+  <text x="324" y="182" font-size="10.5" font-family="ui-monospace, Menlo, monospace" fill="#1c4e80">BOARD_WIDTH = 10</text>
+  <text x="324" y="198" font-size="10.5" font-family="ui-monospace, Menlo, monospace" fill="#1c4e80">BOARD_HEIGHT = 20   ← 채점기가 원하는 값</text>
+  <text x="324" y="214" font-size="10" fill="#6b8fb5">이 두 줄만 보면 되는데…</text>
+
+  <!-- split arrows -->
+  <path d="M400 236 L245 282" stroke="#7fa6cd" stroke-width="2" marker-end="url(#blue)"/>
+  <path d="M560 236 L715 282" stroke="#c0392b" stroke-width="2" marker-end="url(#red)"/>
+
+  <!-- left: safe -->
+  <rect x="40" y="292" width="400" height="242" rx="9" fill="#eef4fb" stroke="#c3d7ee"/>
+  <text x="60" y="318" font-size="14" font-weight="700" fill="#1c4e80">파일을 &quot;읽는다&quot;</text>
+  <text x="60" y="338" font-size="11.5" fill="#4a6f95">텍스트로 열어서 필요한 값만 꺼낸다</text>
+
+  <rect x="60" y="354" width="360" height="60" rx="6" fill="#fff" stroke="#a9c4e2"/>
+  <text x="76" y="376" font-size="11" fill="#1a1a1a">파일 = 글자 뭉치</text>
+  <text x="76" y="396" font-size="11" fill="#5a5a5a">위쪽 두 줄은 그냥 글자로만 보인다. 아무 일도 안 일어난다.</text>
+
+  <rect x="60" y="426" width="360" height="46" rx="6" fill="#e7f0fa" stroke="#a9c4e2"/>
+  <text x="76" y="455" font-size="12.5" font-weight="700" fill="#1c4e80">✔ 안전 — 답안지를 눈으로 채점</text>
+
+  <text x="60" y="500" font-size="11.5" fill="#4a6f95">학생이 답안지에 뭘 써놨든</text>
+  <text x="60" y="518" font-size="11.5" fill="#4a6f95">채점관 컴퓨터에는 아무 영향이 없다.</text>
+
+  <!-- right: dangerous -->
+  <rect x="520" y="292" width="400" height="242" rx="9" fill="#f8eeee" stroke="#e8c9c9"/>
+  <text x="540" y="318" font-size="14" font-weight="700" fill="#8c3a3a">파일을 &quot;import 한다&quot;</text>
+  <text x="540" y="338" font-size="11.5" fill="#a05656">파이썬에게 &quot;이 파일을 불러와&quot;라고 시킨다</text>
+
+  <rect x="540" y="354" width="360" height="60" rx="6" fill="#fff" stroke="#e0b9b9"/>
+  <text x="556" y="376" font-size="11" fill="#1a1a1a">파일 = 실행할 프로그램</text>
+  <text x="556" y="396" font-size="11" fill="#5a5a5a">값을 꺼내기 전에 파일 전체를 위에서부터 실행한다.</text>
+
+  <rect x="540" y="426" width="360" height="46" rx="6" fill="#f6e3e2" stroke="#e0b9b9"/>
+  <text x="556" y="455" font-size="12.5" font-weight="700" fill="#8c3a3a">✖ 위험 — 답안지를 실행해버림</text>
+
+  <text x="540" y="500" font-size="11.5" fill="#a05656">맨 위 두 줄이 채점관 컴퓨터에서 돌아간다.</text>
+  <text x="540" y="518" font-size="11.5" fill="#a05656">BOARD_HEIGHT 를 얻기 위한 &quot;부작용&quot;으로.</text>
+
+  <!-- bottom -->
+  <rect x="40" y="552" width="880" height="46" rx="8" fill="#f4f1ea" stroke="#ddd3c0"/>
+  <text x="60" y="572" font-size="12.5" fill="#4a4a4a">OSWorld 채점기는 오른쪽을 택했다. <tspan font-weight="700">BOARD_HEIGHT 라는 숫자 하나를 얻으려고 파일 전체를 실행</tspan>한다.</text>
+  <text x="60" y="590" font-size="12" fill="#6b6b6b">그 파일을 쓴 것은, 신뢰할 수 없어서 VM 에 가둬둔 바로 그 에이전트다.</text>
+
+  <defs>
+    <marker id="blue" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#7fa6cd"/></marker>
+    <marker id="red" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#c0392b"/></marker>
+  </defs>
+</svg>
