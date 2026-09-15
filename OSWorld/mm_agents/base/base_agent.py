@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """통합 실행기용 공통 에이전트 계약 + Luna/Kimi 껍데기 루프.
 
-러너(run_claude_3 / run_chain)는 `run_episode()` 하나만 안다.
+러너(run_cua / run_chain)는 `run_episode()` 하나만 안다.
 
   BaseAgent         — 계약. run_episode(instruction, max_steps, result_dir) -> EpisodeResult
   StepAgentAdapter  — predict 형 에이전트(Luna/Kimi)를 에피소드 계약으로 승격.

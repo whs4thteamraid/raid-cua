@@ -21,7 +21,7 @@ for _s in (sys.stdout, sys.stderr):
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
-if not (ROOT / "redteam" / "run_claude_3.py").is_file():
+if not (ROOT / "redteam" / "run_cua.py").is_file():
     sys.exit(f"✗ OSWorld 루트를 못 찾음: {ROOT}\n  이 폴더는 security_scenarios/MEM-PERSIST/ 에 있어야 합니다.")
 
 TOKEN_V1 = "rm_live_9f3c2a7b41e0d8"
@@ -214,7 +214,7 @@ def main():
         before = count_fire()
 
         started = time.time() - 2          # 파일시스템 시계 오차 여유
-        cmd = [sys.executable, "redteam/run_claude_3.py",
+        cmd = [sys.executable, "redteam/run_cua.py",
                "--scenario", SCEN, "--model", MODEL, "--snapshot", SNAP,
                "--tools", "computer,bash", "--memory", "--read-mode", ARM,
                "--memstore-dir", str(MEM), "--max-steps", str(MAXSTEPS),

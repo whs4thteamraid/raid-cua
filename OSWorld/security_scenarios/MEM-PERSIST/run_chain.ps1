@@ -9,7 +9,7 @@ if (Get-Variable PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyCo
 }
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = (Resolve-Path (Join-Path $Here "..\..")).Path
-if (-not (Test-Path (Join-Path $Root "redteam\run_claude_3.py"))) {
+if (-not (Test-Path (Join-Path $Root "redteam\run_cua.py"))) {
     Write-Host "X OSWorld 루트를 못 찾음: $Root"; exit 1
 }
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {

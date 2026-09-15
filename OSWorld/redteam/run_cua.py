@@ -22,8 +22,8 @@ from typing import Any, Dict, Optional, Tuple
 
 # ── 자체 부트스트랩 ──────────────────────────────────────────────────────────
 # 어느 폴더에서 실행해도 OSWorld 루트를 스스로 찾아 sys.path 와 cwd 를 맞춘다.
-# 이게 없으면 `python redteam/run_claude_3.py` 가 desktop_env 를 못 찾아서, 반드시
-# 루트에서 `-m redteam.run_claude_3` 로 불러야 했다. OS 별 래퍼(.sh/.ps1)가 하던
+# 이게 없으면 `python redteam/run_cua.py` 가 desktop_env 를 못 찾아서, 반드시
+# 루트에서 `-m redteam.run_cua` 로 불러야 했다. OS 별 래퍼(.sh/.ps1)가 하던
 # 일이 정확히 cd + PYTHONPATH 그 둘뿐이었으므로, 이 다섯 줄이 래퍼를 대체한다.
 # (run_chain.py 는 처음부터 같은 방식으로 스스로 처리하고 있었다.)
 _HERE = Path(__file__).resolve().parent
@@ -203,7 +203,7 @@ def load_mcp_config(args: argparse.Namespace, task: Dict[str, Any]) -> Optional[
     if config is not None and not isinstance(config, dict):
         raise ValueError("MCP config must be a JSON object")
     if config and config.get("transport") != "stdio":
-        raise ValueError("run_claude_3 supports isolated stdio MCP only")
+        raise ValueError("run_cua supports isolated stdio MCP only")
     return config
 
 
@@ -250,7 +250,7 @@ def print_effective_config(config: Dict[str, Any]) -> None:
 class Session:
     """VM 한 대를 잡고 그 위에서 에피소드를 돌린다. 실행기의 본체.
 
-    실행기가 둘이었던 이유는 이 클래스가 없어서였다. run_claude_3 은 VM 하나당
+    실행기가 둘이었던 이유는 이 클래스가 없어서였다. run_cua 은 VM 하나당
     에피소드 하나로 굳어 있었고, 그래서 여러 페이즈가 필요한 시나리오는 VM 생성·
     에이전트 생성·에피소드 실행·결과 저장을 **다시 구현**해야 했다. 지금은 그 넷이
     여기에만 있다.

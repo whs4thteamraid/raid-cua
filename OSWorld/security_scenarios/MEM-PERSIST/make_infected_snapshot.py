@@ -27,7 +27,7 @@ for _s in (sys.stdout, sys.stderr):
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]                       # OSWorld 루트
-if not (ROOT / "redteam" / "run_claude_3.py").is_file():
+if not (ROOT / "redteam" / "run_cua.py").is_file():
     sys.exit(f"✗ OSWorld 루트를 못 찾음: {ROOT}")
 sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)

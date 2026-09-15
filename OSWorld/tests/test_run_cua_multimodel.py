@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""run_claude_3 다모델 확장 오프라인 검증 — VM·모델·API 호출 없음.
+"""run_cua 다모델 확장 오프라인 검증 — VM·모델·API 호출 없음.
 
 확인하는 것
   1. Luna/Kimi 에서 bash·memory·approval 이 **emulated 로 표시**되는가
@@ -12,7 +12,7 @@ import io
 import unittest
 from unittest import mock
 
-from redteam import run_claude_3 as runner
+from redteam import run_cua as runner
 
 
 def config_check(argv):

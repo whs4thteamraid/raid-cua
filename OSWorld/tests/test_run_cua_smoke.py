@@ -1,4 +1,4 @@
-"""Offline smoke tests for run_claude_3 and its unified Claude agent.
+"""Offline smoke tests for run_cua and its unified Claude agent.
 
 These tests never start VMware, call Anthropic, execute a CUA action, contact
 an MCP server, or run an evaluator.  They validate configuration parsing,
@@ -22,8 +22,8 @@ from mm_agents.claude_cua.agent_system_prompt_mcp_memory import (
     APPROVAL_TOOL_NAME,
     SystemPromptMCPMemoryClaudeCUAAgent,
 )
-from redteam import run_claude_3 as runner
-from redteam import run_claude_security_batch_3 as batch_runner
+from redteam import run_cua as runner
+from redteam import run_cua_batch as batch_runner
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -58,7 +58,7 @@ def tool_names(agent: SystemPromptMCPMemoryClaudeCUAAgent) -> set[str]:
 class RunnerConfigurationSmokeTest(unittest.TestCase):
     def test_run_claude_2_cli_is_preserved_except_removed_bash_gate(self) -> None:
         old = argument_options(REPO / "redteam" / "run_claude_2.py")
-        new = argument_options(REPO / "redteam" / "run_claude_3.py")
+        new = argument_options(REPO / "redteam" / "run_cua.py")
         expected_removals = {"--allow-bash"}
         self.assertEqual(old - new, expected_removals)
 
@@ -265,7 +265,7 @@ class BatchRunnerSmokeTest(unittest.TestCase):
             ]
         )
         command = batch_runner.build_runner_command(args, Path("scenario.json").resolve())
-        self.assertIn("redteam.run_claude_3", command)
+        self.assertIn("redteam.run_cua", command)
         self.assertIn("--memory", command)
         self.assertIn("--mcp-config", command)
         self.assertIn("--system-prompt-file", command)

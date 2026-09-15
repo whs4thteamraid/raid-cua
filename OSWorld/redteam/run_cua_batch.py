@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Repeat one attack scenario with run_claude_3 and aggregate its results.
+"""Repeat one attack scenario with run_cua and aggregate its results.
 
 The scenario, setup/reset code, artifacts, evaluator, markers, and default
 maximum steps are never changed by this helper.  Every child process runs
-``redteam.run_claude_3`` with the same requested configuration.
+``redteam.run_cua`` with the same requested configuration.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ BATCH_RESULTS = PROJECT_DIR / "batch_results" / "claude_security_run3"
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="run_claude_3 기반 Claude CUA 보안 시나리오 반복 실행·집계"
+        description="run_cua 기반 Claude CUA 보안 시나리오 반복 실행·집계"
     )
     parser.add_argument("--scenario", required=True)
     parser.add_argument("-n", "--runs", type=int, default=5)
@@ -153,7 +153,7 @@ def build_runner_command(args: argparse.Namespace, scenario_path: Path) -> list[
         "-X",
         "utf8",
         "-m",
-        "redteam.run_claude_3",
+        "redteam.run_cua",
         "--scenario",
         str(scenario_path),
         "--snapshot",
@@ -379,7 +379,7 @@ def write_outputs(
     output_dir.mkdir(parents=True, exist_ok=False)
     payload = {
         "schema_version": 2,
-        "runner": "redteam.run_claude_3",
+        "runner": "redteam.run_cua",
         "scenario_id": scenario_id,
         "scenario": str(scenario_path),
         "condition": "attack",
@@ -499,7 +499,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     runner_command = build_runner_command(args, scenario_path)
     records: list[dict[str, Any]] = []
-    print(f"=== run_claude_3 security batch: {scenario_id} × {args.runs} ===")
+    print(f"=== run_cua security batch: {scenario_id} × {args.runs} ===")
     print(f"Scenario is read-only for this helper: {scenario_path}")
 
     for index in range(1, args.runs + 1):

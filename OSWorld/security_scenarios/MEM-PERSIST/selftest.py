@@ -73,8 +73,8 @@ print("── 1. 환경 ──")
 
 @check("OSWorld 루트를 올바르게 찾는다")
 def _():
-    assert (ROOT / "redteam" / "run_claude_3.py").is_file(), \
-        f"redteam/run_claude_3.py 없음 — 이 폴더가 security_scenarios/MEM-PERSIST/ 안에 있어야 함"
+    assert (ROOT / "redteam" / "run_cua.py").is_file(), \
+        f"redteam/run_cua.py 없음 — 이 폴더가 security_scenarios/MEM-PERSIST/ 안에 있어야 함"
 
 
 @check("git 사용 가능 (사내 미러 저장소 생성에 필요)")

@@ -1,6 +1,6 @@
-# run_claude_3 사용 안내
+# run_cua 사용 안내
 
-`run_claude_3.py`는 OSWorld에서 Claude Computer Use 실험을 실행하기 위한 통합 러너다. 기존 `run_claude_2.py`의 GUI, Bash, Editor, MCP, Memory, 팝업 주입, setup/evaluator 및 결과 기록 기능을 유지하면서 다음 기능을 추가한다.
+`run_cua.py`는 OSWorld에서 Claude Computer Use 실험을 실행하기 위한 통합 러너다. 기존 `run_claude_2.py`의 GUI, Bash, Editor, MCP, Memory, 팝업 주입, setup/evaluator 및 결과 기록 기능을 유지하면서 다음 기능을 추가한다.
 
 - 사용자 지정 system prompt
 - 호스트 PowerShell을 통한 실제 사용자 승인
@@ -13,15 +13,15 @@
 
 ```text
 redteam/
-├── run_claude_3.py
-├── run_claude_security_batch_3.py
-└── README_run_claude_3.md
+├── run_cua.py
+├── run_cua_batch.py
+└── README_run_cua.md
 
 mm_agents/claude_cua/
 └── agent_system_prompt_mcp_memory.py
 
 tests/
-└── test_run_claude_3_smoke.py
+└── test_run_cua_smoke.py
 ```
 
 ## 기본 원칙
@@ -50,7 +50,7 @@ cd C:\Users\heeso\RAID_2\raid-cua\OSWorld
 GUI만 사용하는 일반 시나리오 실행 예시다.
 
 ```powershell
-uv run python -X utf8 -m redteam.run_claude_3 `
+uv run python -X utf8 -m redteam.run_cua `
   --scenario "C:\경로\scenario.json" `
   --tools computer `
   --allow-external-screen-share `
@@ -156,7 +156,7 @@ uv run python -X utf8 -m redteam.run_claude_3 `
 ### 승인 기능을 포함한 실행 예시
 
 ```powershell
-uv run python -X utf8 -m redteam.run_claude_3 `
+uv run python -X utf8 -m redteam.run_cua `
   --scenario "C:\경로\scenario.json" `
   --tools computer,bash `
   --system-prompt-file "C:\경로\approval_policy.txt" `
@@ -193,7 +193,7 @@ Memory를 사용할 때만 `--memory`를 추가한다.
 MCP를 사용하려면 `--tools`에 `mcp`를 넣고, 시나리오 JSON의 `mcp` 객체 또는 별도 설정 파일을 제공해야 한다.
 
 ```powershell
-uv run python -X utf8 -m redteam.run_claude_3 `
+uv run python -X utf8 -m redteam.run_cua `
   --scenario "C:\경로\scenario.json" `
   --tools computer,mcp `
   --mcp-config "C:\경로\mcp_config.json" `
@@ -206,7 +206,7 @@ MCP 설정이 있어도 `--tools`에 `mcp`가 없으면 MCP는 비활성화된�
 MCP 연결만 확인할 때는 다음 명령을 사용한다.
 
 ```powershell
-uv run python -X utf8 -m redteam.run_claude_3 `
+uv run python -X utf8 -m redteam.run_cua `
   --scenario "C:\경로\scenario.json" `
   --tools computer,mcp `
   --mcp-check-only
@@ -219,7 +219,7 @@ uv run python -X utf8 -m redteam.run_claude_3 `
 모든 선택 기능을 함께 사용하는 예시다. Bash는 `--tools`에 없으므로 활성화되지 않는다.
 
 ```powershell
-uv run python -X utf8 -m redteam.run_claude_3 `
+uv run python -X utf8 -m redteam.run_cua `
   --scenario "C:\경로\scenario.json" `
   --tools computer,mcp `
   --memory `
@@ -236,7 +236,7 @@ uv run python -X utf8 -m redteam.run_claude_3 `
 VM, 모델, Agent 행동, evaluator를 전혀 실행하지 않고 옵션 조합만 확인할 수 있다.
 
 ```powershell
-uv run python -X utf8 -m redteam.run_claude_3 `
+uv run python -X utf8 -m redteam.run_cua `
   --instruction "오프라인 구성 확인" `
   --tools computer,bash,editor `
   --memory `
@@ -249,14 +249,14 @@ uv run python -X utf8 -m redteam.run_claude_3 `
 
 ## 여러 번 반복 실행하기
 
-`run_claude_security_batch_3.py`는 동일한 Attack 시나리오를 지정한 횟수만큼 반복 실행하고 결과를 자동 집계한다. 기존 batch 파일은 보존되며, 새 파일은 각 실행에서 `redteam.run_claude_3`만 호출한다.
+`run_cua_batch.py`는 동일한 Attack 시나리오를 지정한 횟수만큼 반복 실행하고 결과를 자동 집계한다. 기존 batch 파일은 보존되며, 새 파일은 각 실행에서 `redteam.run_cua`만 호출한다.
 
 시나리오 코드, HTML, setup/reset, evaluator, marker와 시나리오에 지정된 기본 최대 스텝은 변경하지 않는다. `--max-steps`를 명시한 경우에만 해당 batch 전체에 같은 값이 전달된다.
 
 ### 기본 5회 실행 명령어
 
 ```powershell
-uv run python -X utf8 -m redteam.run_claude_security_batch_3 `
+uv run python -X utf8 -m redteam.run_cua_batch `
   --scenario "C:\경로\scenario_attack.json" `
   --runs 5 `
   --tools computer `
@@ -268,7 +268,7 @@ batch 실행을 요청하는 것 자체를 반복 행동 실행에 대한 명시
 ### system prompt와 실제 승인 기능을 포함한 5회 실행
 
 ```powershell
-uv run python -X utf8 -m redteam.run_claude_security_batch_3 `
+uv run python -X utf8 -m redteam.run_cua_batch `
   --scenario "C:\경로\scenario_attack.json" `
   --runs 5 `
   --tools computer,bash `
@@ -283,7 +283,7 @@ uv run python -X utf8 -m redteam.run_claude_security_batch_3 `
 ### Memory와 MCP를 포함한 5회 실행
 
 ```powershell
-uv run python -X utf8 -m redteam.run_claude_security_batch_3 `
+uv run python -X utf8 -m redteam.run_cua_batch `
   --scenario "C:\경로\scenario_attack.json" `
   --runs 5 `
   --tools computer,mcp `
@@ -334,7 +334,7 @@ batch 실행기는 `condition`이 `attack`인 시나리오만 받는다. Control
 다음 테스트는 VMware, Anthropic API, CUA 행동, 실제 MCP 서버 및 evaluator를 실행하지 않는다.
 
 ```powershell
-uv run python -X utf8 -m unittest discover -s tests -p "test_run_claude_3_smoke.py" -v
+uv run python -X utf8 -m unittest discover -s tests -p "test_run_cua_smoke.py" -v
 ```
 
 검사 항목은 다음과 같다.
@@ -348,7 +348,7 @@ uv run python -X utf8 -m unittest discover -s tests -p "test_run_claude_3_smoke.
 - MCP 도구 발견 결과의 통합 Agent 노출
 - system prompt의 append/replace 처리
 - 승인과 거절의 구조화된 결과 및 JSONL 기록
-- batch가 `run_claude_3` 옵션을 정확히 전달하고 `--allow-bash`를 사용하지 않는지 확인
+- batch가 `run_cua` 옵션을 정확히 전달하고 `--allow-bash`를 사용하지 않는지 확인
 - batch의 ASR, 평균 스텝, 승인·MCP·Memory 횟수 집계
 
 정상 결과는 다음과 같다.

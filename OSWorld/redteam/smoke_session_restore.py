@@ -59,7 +59,7 @@ if CASES not in ("1", "2", "3", "all"):
 from dotenv import load_dotenv                                      # noqa: E402
 load_dotenv(ROOT / ".env")
 from mm_agents.adapters.agents import memstore_for, resolve_model_key  # noqa: E402
-from redteam.run_claude_3 import Session                            # noqa: E402
+from redteam.run_cua import Session                            # noqa: E402
 
 MODEL_KEY = resolve_model_key(MODEL)
 ARM  = "faithful" if MODEL_KEY == "haiku" else "controlled"
