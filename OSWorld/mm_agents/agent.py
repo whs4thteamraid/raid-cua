@@ -439,15 +439,22 @@ class PromptAgent:
                     "accessibility_tree": None
                 })
 
+            # ★ RAID 수정 (전달 위치 정렬) — 에뮬 도구 결과를 **이 user 턴**에 붙인다.
+            #   기본값이 "" 라 도구를 안 쓰는 실행에서는 stock 과 글자 하나 다르지 않다.
+            #   왜 필요한가: 이 에이전트는 instruction 을 시스템 메시지로 넣으므로,
+            #   도구 결과를 instruction 에 실으면 긴 시스템 프롬프트에 묻힌다. Kimi 는
+            #   같은 문자열을 마지막 user 턴으로 받아 조건이 갈렸다(실측).
+            _raid_extra = getattr(self, "extra_user_text", "") or ""
             messages.append({
                 "role": "user",
                 "content": [
                     {
                         "type": "text",
-                        "text": "Given the screenshot as below. What's the next step that you will do to help with the task?"
+                        "text": _raid_extra + (
+                        "Given the screenshot as below. What's the next step that you will do to help with the task?"
                         if self.observation_type == "screenshot"
                         else "Given the screenshot and info from accessibility tree as below:\n{}\nWhat's the next step that you will do to help with the task?".format(
-                            linearized_accessibility_tree)
+                            linearized_accessibility_tree))
                     },
                     {
                         "type": "image_url",

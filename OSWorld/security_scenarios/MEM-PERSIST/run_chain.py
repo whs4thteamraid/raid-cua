@@ -590,6 +590,9 @@ def main():
             summary["model_key"] = MODEL_KEY
             summary["agent"] = r1.get("agent")
             summary["tools_enabled"] = r1.get("tools_enabled")
+            # ★ 조건 지문은 페이즈별로 따로 남긴다 — P1_ARM 과 ARM 이 다르므로
+            #   한 판 안에서도 memory_arm 이 갈린다. 하나로 합치면 그 차이가 사라진다.
+            summary["conditions"] = r1.get("conditions")
             summary["p1_arm"] = P1_ARM
             summary["status"] = "phase1_done"
             save_summary(rd, summary)
@@ -682,6 +685,7 @@ def main():
             summary["tool_syntax_errors_by_phase"] = {"phase1": r1.get("tool_syntax_errors"),
                                                       "phase2": r2.get("tool_syntax_errors")}
             summary["tool_choice_counts"] = r2.get("tool_choice_counts")
+            summary["conditions_phase2"] = r2.get("conditions")
             summary["exfil_delta"] = new_lines
             summary["status"] = "complete"
         except KeyboardInterrupt:

@@ -99,6 +99,10 @@ class EpisodeResult:
     tool_syntax_errors: int = 0
     tool_lenient_accepts: int = 0
     tool_choice_counts: Dict[str, int] = field(default_factory=dict)
+    # ★ 이 판이 실제로 어떤 조건에서 돌았는지. 비어 있으면 나중에 복원할 방법이 없다.
+    #   tools_enabled 를 native/emulated 매핑으로 남기는 것과 같은 이유다 — 반년 뒤
+    #   표에서 어떤 모델이 낮은 이유가 모델 때문인지 조건 때문인지 가르려면 필요하다.
+    conditions: Dict[str, Any] = field(default_factory=dict)
     extra: Dict[str, Any] = field(default_factory=dict)
 
     # 기존 코드가 r.get("memory_writes") 처럼 dict 로 읽던 것을 그대로 살린다.
@@ -130,7 +134,7 @@ class EpisodeResult:
 class BaseAgent(ABC):
     name: str = "base"
     tag: str = "agent"          # 터미널 로그 앞에 붙는 짧은 이름
-    supports_arms: Tuple[str, ...] = ("controlled", "inject")
+    supports_arms: Tuple[str, ...] = ("neutral", "controlled", "inject")
 
     def __init__(self, env, *, model: str, verbose: bool = True, **kwargs):
         self.env = env
@@ -143,6 +147,16 @@ class BaseAgent(ABC):
     @abstractmethod
     def run_episode(self, instruction: str, max_steps: int = 30,
                     result_dir: Optional[str] = None) -> EpisodeResult: ...
+
+    def conditions(self) -> Dict[str, Any]:
+        """이 에이전트가 **실제로** 돌고 있는 조건.
+
+        ★ 값을 적어두지 말고 살아있는 객체에서 읽을 것.
+          `{"max_tokens": 6000}` 처럼 상수를 박아두면 어댑터 기본값이 바뀌어도 기록은
+          그대로라 드리프트를 못 잡는다. 그러면 기록이 증거가 아니라 주장이 된다.
+          getattr(obj, name, None) 로 읽어, 속성이 생기거나 사라지면 기록도 따라간다.
+        """
+        return {}
 
 
 class StepAgentAdapter(BaseAgent):
@@ -160,6 +174,14 @@ class StepAgentAdapter(BaseAgent):
         self.emu = emu
         self.unsupported_requested = list(unsupported_requested or [])
         self.sleep_after_execution = sleep_after_execution
+
+    # 도구 결과를 지시문이 아니라 **마지막 user 턴**으로 넘겨야 하는 에이전트가 True.
+    # (Luna 의 PromptAgent 는 instruction 을 시스템 메시지로 넣기 때문에 필요하다.
+    #  Kimi 는 instruction 자체가 마지막 user 턴이라 기본값 False 로 충분하다.)
+    results_to_user_turn = False
+
+    def attach_user_text(self, text: str) -> None:
+        """다음 predict 의 마지막 user 턴 앞에 붙일 글. 기본은 아무것도 안 함."""
 
     @abstractmethod
     def predict(self, instruction: str, obs: Dict[str, Any]) -> StepOutput: ...
@@ -181,6 +203,8 @@ class StepAgentAdapter(BaseAgent):
         files_at_start = emu.memory_files_at_start() if emu else 0
         if emu:
             emu.begin_episode()
+            # 결과를 어디에 붙일지 층에 알려준다 — 한 턴에 한 번만 렌더링되도록.
+            emu.results_to_user_turn = self.results_to_user_turn
             emu.result_dir = result_dir or emu.result_dir
 
         obs = self.env._get_obs()
@@ -190,6 +214,10 @@ class StepAgentAdapter(BaseAgent):
             steps = step
             if emu:
                 emu.set_step(step)
+            # ★ 도구 결과의 전달 위치를 에이전트에 맞춘다. 지시문에 실으면 모델에 따라
+            #   시스템 프롬프트에 묻혀 조건이 갈린다(실측: Luna 4/4 판 목록에서 멈춤).
+            if emu and self.results_to_user_turn:
+                self.attach_user_text(emu.results_block())
             decorated = emu.decorate(instruction) if emu else instruction
             out = self.predict(decorated, obs)
             final_text = out.response or final_text
@@ -275,6 +303,7 @@ class StepAgentAdapter(BaseAgent):
             tools_enabled=self._tools_map(),
             unsupported_requested=self.unsupported_requested,
             memory_files_at_start=files_at_start,
+            conditions=self.conditions(),
         )
         if emu:
             c = emu.counters

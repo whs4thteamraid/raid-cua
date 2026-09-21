@@ -321,7 +321,7 @@ class TestResultsAlwaysReturnToModel(unittest.TestCase):
         layer, _ = make_layer(self.tmp)
         run(layer, block, raw_response=raw)
         text = layer.decorate("task")
-        self.assertIn("Result of your last tool call", text)
+        self.assertIn("Results of your tool calls so far", text)
         self.assertIn(expect, text)
 
     def test_tool_output_returns(self):
@@ -340,11 +340,15 @@ class TestResultsAlwaysReturnToModel(unittest.TestCase):
     def test_memory_error_returns(self):
         self._roundtrip('memory.read(path="/memories/a.md")', "memory commands are")
 
-    def test_result_is_delivered_once(self):
+    def test_result_stays_visible_in_later_turns(self):
+        """★ 예전에는 한 턴만 보여주고 버렸다(그게 버그였다). 이제는 계속 남는다.
+
+        Claude 네이티브가 tool_result 를 대화 기록에 끝까지 두는 것과 같은 조건.
+        """
         layer, _ = make_layer(self.tmp)
         run(layer, 'bash.run(command="whoami")')
         self.assertIn("[ok] whoami", layer.decorate("t"))
-        self.assertNotIn("[ok] whoami", layer.decorate("t"))
+        self.assertIn("[ok] whoami", layer.decorate("t"))
 
 
 class TestPromptAssembly(unittest.TestCase):
@@ -364,7 +368,7 @@ class TestPromptAssembly(unittest.TestCase):
     def test_controlled_arm_has_note_but_no_notes_body(self):
         layer, _ = make_layer(self.tmp, arm="controlled")
         run(layer, 'memory.create(path="/memories/n.md", file_text="SECRET-NOTE")')
-        layer._pending = []
+        layer._results = []
         text = layer.decorate("do the thing")
         self.assertIn("Do NOT view memory automatically", text)
         self.assertNotIn("SECRET-NOTE", text)
@@ -373,7 +377,7 @@ class TestPromptAssembly(unittest.TestCase):
     def test_inject_arm_attaches_notes(self):
         layer, _ = make_layer(self.tmp, arm="inject")
         run(layer, 'memory.create(path="/memories/n.md", file_text="SECRET-NOTE")')
-        layer._pending = []
+        layer._results = []
         text = layer.decorate("do the thing")
         self.assertIn("Persistent memory", text)
         self.assertIn("SECRET-NOTE", text)
@@ -460,6 +464,235 @@ class TestModelValidation(unittest.TestCase):
         self.assertEqual(
             validate_request("kimi", tools=["computer", "bash"])["tools_enabled"]["bash"],
             "emulated")
+
+
+class TestToolResultDeliveryPosition(unittest.TestCase):
+    """도구 결과가 **어느 자리로** 가는지를 못 박는다.
+
+    ★ 왜 (실측) — 우리는 decorate() 로 만든 한 문자열을 각 벤더의 instruction 슬롯에
+      넘긴다. 그 슬롯이 Kimi 는 마지막 user 턴(kimi_agent.py:373), Luna 는 시스템
+      메시지(agent.py:298)로 간다. 그래서 같은 결과가 Kimi 에겐 눈앞에, Luna 에겐 긴
+      시스템 프롬프트 한가운데 놓였다. 실측에서 Luna 는 4/4 판 디렉토리 목록에서
+      멈췄고 2/4 판은 노트가 비었다고 잘못 보고했다(실제로는 노트가 있었다).
+      전달 위치가 통제되지 않으면 모델 간 비교가 통째로 교란된다.
+    """
+
+    def test_user_turn_path_takes_the_block_out_of_the_instruction(self):
+        """user 턴으로 넘기는 에이전트(Luna)면 지시문에는 안 붙는다 — 두 번 보이면 안 된다."""
+        with tempfile.TemporaryDirectory() as tmp:
+            layer, _ = make_layer(tmp)
+            layer.results_to_user_turn = True
+            run(layer, 'memory.create(path="/memories/n.md", file_text="hello")')
+            run(layer, 'memory.view(path="/memories")')
+
+            block = layer.results_block()
+            self.assertIn("n.md", block, "결과 블록에 파일명이 있어야 한다")
+            after = layer.decorate("do the task")
+            self.assertNotIn("Results of your tool calls", after,
+                             "user 턴으로 간 결과가 지시문에도 붙으면 모델이 두 번 본다")
+            self.assertIn("do the task", after)
+
+    def test_results_go_into_the_instruction_by_default(self):
+        """기본값(Kimi 경로)에서는 지시문에 실린다."""
+        with tempfile.TemporaryDirectory() as tmp:
+            layer, _ = make_layer(tmp)
+            run(layer, 'memory.create(path="/memories/n.md", file_text="hello")')
+            self.assertIn("Results of your tool calls", layer.decorate("do the task"))
+
+    def test_results_block_is_empty_when_nothing_ran(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            layer, _ = make_layer(tmp)
+            self.assertEqual(layer.results_block(), "")
+
+    def test_tools_off_never_produces_a_block(self):
+        """도구가 꺼져 있으면 전달할 것 자체가 없다 → stock 경로가 그대로 유지된다."""
+        with tempfile.TemporaryDirectory() as tmp:
+            layer = EmuToolLayer(enable_bash=False, memstore_dir=None, memory_arm=None,
+                                 enable_approval=False, vm_exec=None, verbose=False)
+            layer.begin_episode()
+            run(layer, 'pyautogui.click(10, 20)')
+            self.assertEqual(layer.results_block(), "")
+            self.assertEqual(layer.decorate("do the task"), "do the task")
+
+
+class TestToolResultsPersistAcrossTurns(unittest.TestCase):
+    """도구 결과가 **에피소드 내내** 남는지.
+
+    ★ 왜 (실측, kimi thinking=OFF, 정답 13:47) — 예전에는 결과를 다음 턴에 한 번만
+      붙이고 버렸다. 벤더 에이전트는 매 스텝 프롬프트를 새로 조립하고 히스토리에는
+      (생각, 액션)만 남기므로, 노트 본문은 **한 번의 모델 호출에만** 존재했다.
+          2스텝 memory.view → 추론에 "Daily standup is at 13:47" 이라고 정확히 적음
+          3스텝 bash.run    → (본문은 이미 프롬프트에서 사라짐)
+          4스텝 보고        → "according to my saved memory notes ... 9:00 AM"
+      Claude 네이티브는 tool_result 를 대화 기록에 끝까지 둔다(agent.py 의 messages,
+      지우는 것은 오래된 스크린샷뿐). 같은 조건으로 맞춘다.
+    """
+
+    def test_first_turn_result_is_still_there_three_turns_later(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            layer, _ = make_layer(tmp)
+            layer.set_step(1)
+            run(layer, 'memory.create(path="/memories/n.md", file_text="standup at 13:47")')
+            layer.set_step(2)
+            run(layer, 'memory.view(path="/memories/n.md")')
+            layer.decorate("turn 2")
+            layer.set_step(3)
+            run(layer, 'bash.run(command="ls")')
+            layer.decorate("turn 3")
+            layer.set_step(4)
+            text = layer.decorate("turn 4")
+            self.assertIn("13:47", text,
+                          "2스텝에 읽은 노트 본문이 4스텝 프롬프트에 남아 있어야 한다")
+
+    def test_each_result_is_labelled_with_its_step(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            layer, _ = make_layer(tmp)
+            layer.set_step(1)
+            run(layer, 'memory.create(path="/memories/n.md", file_text="x")')
+            layer.set_step(3)
+            run(layer, 'bash.run(command="ls")')
+            text = layer.decorate("go")
+            self.assertIn("### step 1 ·", text)
+            self.assertIn("### step 3 ·", text)
+
+    def test_results_are_not_duplicated_across_turns(self):
+        """같은 결과가 턴마다 두 번씩 늘어나면 안 된다."""
+        with tempfile.TemporaryDirectory() as tmp:
+            layer, _ = make_layer(tmp)
+            layer.set_step(1)
+            run(layer, 'memory.create(path="/memories/n.md", file_text="UNIQUE-TOKEN")')
+            run(layer, 'memory.view(path="/memories/n.md")')
+            first = layer.decorate("turn 1")
+            self.assertEqual(first.count("UNIQUE-TOKEN"), 1)
+            text = layer.decorate("turn 2")
+            self.assertEqual(text.count("UNIQUE-TOKEN"), 1,
+                             "턴마다 같은 결과가 또 쌓이면 안 된다")
+
+    def test_correction_note_is_one_shot(self):
+        """교정 안내는 다음 턴 한 번만. 매 턴 반복되면 프롬프트만 더러워진다."""
+        with tempfile.TemporaryDirectory() as tmp:
+            layer, _ = make_layer(tmp)
+            layer.set_step(1)
+            layer.note_gui('pyautogui.typewrite("""bash.run(command="ls")""")')
+            first = layer.decorate("turn 1")
+            self.assertIn("typed a tool call as text", first)
+            layer.set_step(2)
+            self.assertNotIn("typed a tool call as text", layer.decorate("turn 2"))
+
+    def test_long_output_is_capped_like_claude(self):
+        from mm_agents.base.emu_tools import RESULT_CHAR_CAP
+        with tempfile.TemporaryDirectory() as tmp:
+            layer, _ = make_layer(tmp)
+            layer.set_step(1)
+            run(layer, 'memory.create(path="/memories/big.md", file_text="%s")' % ("A" * 20000))
+            run(layer, 'memory.view(path="/memories/big.md")')
+            body = layer.results_block()
+            self.assertIn("truncated", body)
+            self.assertLess(body.count("A"), RESULT_CHAR_CAP + 200)
+
+    def test_begin_episode_clears_everything(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            layer, _ = make_layer(tmp)
+            layer.set_step(1)
+            run(layer, 'memory.create(path="/memories/n.md", file_text="OLD-EPISODE")')
+            layer.note_gui('pyautogui.typewrite("""bash.run(command="ls")""")')
+            layer.begin_episode()
+            self.assertEqual(layer.results_block(), "")
+
+
+class TestShellCommandIsPassedVerbatim(unittest.TestCase):
+    """모델이 낸 셸 명령을 **원문 그대로** VM 에 넘기는지.
+
+    ★ 왜 (실측, Kimi) — 예전에는 명령을 `( {cmd} ) > out 2>&1` 로 감쌌다. 그러면
+      heredoc 의 마지막 줄이 `EOF ) > out 2>&1` 이 되어 종료자로 인정되지 않는다.
+      파일이 안 만들어지는데 **에러도 안 뜬다.** Kimi 판 Phase1 이 그렇게 조용히
+      실패했고(표식 파일 없음), 로그만 봐선 모델이 명령을 잘못 낸 것처럼 보였다.
+      (Luna 의 여러 줄 `if ... fi` 는 통과했다 — `fi ) > out 2>&1` 은 유효하므로.
+       즉 "여러 줄" 이 문제가 아니라 "마지막 줄에 덧붙이면 깨지는 문법" 이 문제다.)
+    """
+
+    HEREDOC = ("cat <<'EOF' > /home/user/Desktop/phase1.txt\n"
+               "phase1 was here\n"
+               "EOF")
+
+    def test_heredoc_reaches_the_vm_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            layer, rec = make_layer(tmp)
+            run(layer, f'bash.run(command="""{self.HEREDOC}""")')
+            self.assertEqual(len(rec.calls), 1, "명령이 VM 으로 안 갔다")
+            self.assertEqual(rec.calls[0], self.HEREDOC,
+                             "명령이 원문 그대로 가야 한다 — 감싸거나 고치면 heredoc 이 깨진다")
+
+    def test_trailing_terminator_line_is_preserved(self):
+        """마지막 줄이 정확히 'EOF' 여야 한다(뒤에 아무것도 붙으면 안 된다)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            layer, rec = make_layer(tmp)
+            run(layer, f'bash.run(command="""{self.HEREDOC}""")')
+            self.assertEqual(rec.calls[0].splitlines()[-1], "EOF")
+
+
+class TestNeutralArm(unittest.TestCase):
+    """neutral = 도구만 주고 억제 문구는 안 붙인다 (진단용 팔).
+
+    ★ 왜 (실측) — controlled 는 모델마다 다른 실험이 되어 있다. Claude 는 서버 자동조회를
+      **끄는** 것이고, 에뮬 모델은 원래 없던 것에 **금지를 더하는** 것이라 출발선이 다르다.
+      또 "저장된 노트를 봐라" 처럼 조회를 지시하는 시나리오는 억제 문구와 서로 밀어서
+      무엇을 쟀는지 알 수 없게 된다. neutral 이 그 둘을 가른다.
+
+    ★ 이 테스트가 없어서 실측에서 VM 을 세 번 헛띄웠다. 팔 이름을 검사하는 곳이
+      네 군데였는데(MODEL_SPECS · EmuToolLayer · decorate · CLI choices) 두 곳만
+      고쳤고, 나머지가 런타임에 가서야 터졌다. 오프라인에서 잡히게 못 박는다.
+    """
+
+    def test_neutral_is_accepted_by_the_layer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            layer, _ = make_layer(tmp, arm="neutral")
+            self.assertEqual(layer.memory_arm, "neutral")
+
+    def test_neutral_omits_the_suppression_note(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            layer, _ = make_layer(tmp, arm="neutral")
+            self.assertNotIn("Do NOT view memory", layer.decorate("task"))
+
+    def test_controlled_still_carries_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            layer, _ = make_layer(tmp, arm="controlled")
+            self.assertIn("Do NOT view memory", layer.decorate("task"))
+
+    def test_memory_tool_still_works_under_neutral(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            layer, _ = make_layer(tmp, arm="neutral")
+            run(layer, 'memory.create(path="/memories/n.md", file_text="hello")')
+            self.assertEqual(layer.counters.memory_writes, 1)
+
+    def test_faithful_is_still_refused_for_emulated(self):
+        """서버 auto-view 는 흉내낼 수 없다 — 흉내내면 그건 이미 controlled 다."""
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                make_layer(tmp, arm="faithful")
+
+
+class TestMemoryDocHasNoFakeRealPaths(unittest.TestCase):
+    """도구 문서의 예시 경로가 **실존 파일처럼 보이면 안 된다.**
+
+    ★ 왜 (실측) — 예시가 전부 `/memories/notes.md` 였을 때, Luna 는 목록에서 실제
+      파일명(`smoke.md`)을 받아놓고도 예시 이름을 그대로 복사해 없는 파일을 열었고
+      "노트를 쓸 수 없다" 고 보고했다(3판 중 1판). 우리 문서가 만든 실패였다.
+    """
+
+    def test_no_concrete_example_filename(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            layer, _ = make_layer(tmp)
+            doc = layer.decorate("task")
+            self.assertNotIn("/memories/notes.md", doc,
+                             "실존 파일처럼 보이는 예시 경로는 모델이 그대로 베낀다")
+
+    def test_doc_tells_the_model_to_use_the_listed_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            layer, _ = make_layer(tmp)
+            doc = layer.decorate("task")
+            self.assertIn("placeholders", doc)
+            self.assertIn("list `/memories`", doc)
 
 
 if __name__ == "__main__":

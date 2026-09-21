@@ -15,6 +15,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -41,7 +42,8 @@ from desktop_env.evaluators import getters
 from mm_agents.claude_cua.agent_system_prompt_mcp_memory import (
     SystemPromptMCPMemoryClaudeCUAAgent,
 )
-from mm_agents.adapters.agents import build_agent, validate_request
+from mm_agents.adapters.agents import (
+    build_agent, claude_conditions, validate_request)
 
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
@@ -82,7 +84,8 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument("--memory", action="store_true")
     parser.add_argument("--memstore-dir", default=None)
     parser.add_argument(
-        "--read-mode", choices=["faithful", "controlled", "inject"], default="faithful"
+        "--read-mode", choices=["faithful", "neutral", "controlled", "inject"],
+        default="faithful"
     )
     parser.add_argument("--mcp-config", default=None)
 
@@ -247,6 +250,50 @@ def print_effective_config(config: Dict[str, Any]) -> None:
     print("=====================================")
 
 
+# ── 스텝당 실제 호출 수 (측정값) ─────────────────────────────────────────────
+_PY_CALL = re.compile(r"pyautogui\.\w+\s*\(")
+
+
+def _measure_calls(result_dir) -> Dict[str, Any]:
+    """방금 쓴 trajectory.jsonl 에서 스텝당 실제 호출 수를 센다.
+
+    ★ 왜 세는가 (실측) — 같은 max_steps 가 모델마다 다른 행동량을 뜻한다.
+        phase1 기준  Haiku 1.00 / Kimi 1.30 / Luna 1.68 회 per step
+        두 페이즈 합산 Haiku 1.00 / Kimi 1.24 / Luna 1.51
+      Haiku 는 disable_parallel_tool_use 로 API 가 1스텝 1호출을 강제하고, Luna 는 stock
+      프롬프트가 "multiple lines ... be time efficient" 로 배치를 권장하며, Kimi 는 파서가
+      코드블록을 통째로 env.step() 에 넘긴다. 즉 max_steps=40 이 Luna 에겐 Haiku 의 1.7배
+      행동 예산이다. 이 값을 안 남기면 완수율 차이가 모델 차이로 읽힌다.
+
+    ★ 주장이 아니라 **측정값**이다. 세 모델이 같은 형식(step/reasoning/tools)으로
+      trajectory.jsonl 을 쓰므로 한 함수로 셋 다 잰다.
+        - GUI: 라벨 안의 pyautogui.* 호출 수
+        - 도구 호출(memory:/bash:): 라벨 하나를 1회로
+    """
+    p = Path(result_dir) / "trajectory.jsonl"
+    if not p.exists():
+        return {}
+    steps = calls = 0
+    try:
+        lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return {}
+    for line in lines:
+        try:
+            r = json.loads(line)
+        except ValueError:
+            continue
+        labels = r.get("tools")
+        if not isinstance(labels, list) or not labels:
+            continue
+        blob = " ".join(str(x) for x in labels)
+        steps += 1
+        calls += len(_PY_CALL.findall(blob)) or len(labels)
+    if not steps:
+        return {}
+    return {"steps": steps, "calls": calls, "calls_per_step": round(calls / steps, 3)}
+
+
 class Session:
     """VM 한 대를 잡고 그 위에서 에피소드를 돌린다. 실행기의 본체.
 
@@ -304,6 +351,7 @@ class Session:
         client_password: str = "password",
         verbose: bool = True,
         check_api_key: bool = True,
+        agent_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
         # ★ 모델×도구 조합은 VM 을 띄우기 **전에** 판정한다. 지원하지 않는 조합이
         #   조용히 다른 조건으로 도는 것이 제일 위험하다(결과가 모델 차이처럼 보인다).
@@ -331,6 +379,9 @@ class Session:
         self.pause = pause
         self.initial_wait = initial_wait
         self.verbose = verbose
+        # 모델별 노브를 어댑터까지 그대로 흘려보낸다(예: kimi 의 thinking).
+        # 실행기는 내용을 해석하지 않는다 — 어느 모델이 무엇을 받는지는 어댑터의 일.
+        self.agent_kwargs = dict(agent_kwargs or {})
         self.episodes = 0
 
         self.env = DesktopEnv(
@@ -388,6 +439,7 @@ class Session:
                 # sleep_after_execution 에 해당한다(stock run.py 기본값은 0.0).
                 sleep_after_execution=self.pause,
                 verbose=loud,
+                **self.agent_kwargs,
             )
         return SystemPromptMCPMemoryClaudeCUAAgent(
             self.env,
@@ -426,6 +478,23 @@ class Session:
             result["tools_enabled"] = {n: "native" for n in result["tools_enabled"]}
         result.setdefault("model_key", self.plan["model_key"])
         result.setdefault("agent", self.plan["agent"])
+        # ── 조건 지문 ────────────────────────────────────────────────────────
+        # 스텝 에이전트는 EpisodeResult 에 담아 오고, claude 는 벤더 dict 라 여기서 읽는다.
+        cond = dict(result.get("conditions") or {})
+        if not cond and self.plan["family"] == "claude":
+            try:
+                cond = claude_conditions(agent)
+            except Exception as exc:        # 기록 실패가 실험을 죽이지 않게
+                cond = {"error": f"{type(exc).__name__}: {exc}"}
+        measured = _measure_calls(result_dir)
+        if measured:
+            cond["measured"] = measured
+        cond.setdefault("max_steps", max_steps)
+        result["conditions"] = cond
+        # ★ claude 경로는 tools_enabled 를 안 돌려준다(실측 확인). 비어 있으면 채운다 —
+        #   이게 없으면 haiku 판만 조건 열이 비어 다른 모델과 나란히 못 놓는다.
+        if not result.get("tools_enabled"):
+            result["tools_enabled"] = dict(self.plan["tools_enabled"])
         self.episodes += 1
         return result
 
@@ -523,6 +592,9 @@ SUMMARY_KEYS = (
     "memory_enabled", "read_mode", "memstore_dir", "memory_files_at_start",
     "memory_views", "memory_writes", "memory_recalled_via_tool",
     "approval_requests", "approval_grants", "approval_denials", "approval_log",
+    # ★ 화이트리스트라서 여기 없으면 execute() 가 채운 조건 지문이 summary 로 안 넘어간다.
+    #   실측: 이 한 줄이 빠져 있어 스모크 summary.json 에 conditions 가 통째로 비었다.
+    "conditions",
 )
 
 

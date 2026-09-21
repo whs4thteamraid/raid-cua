@@ -99,18 +99,26 @@ Its output is shown to you at the top of your next turn. A bare shell command on
 own line is NOT executed — wrap it in bash.run(...).
 """
 
+# ★ 예시 경로를 진짜 파일처럼 쓰지 않는다 (실측).
+#   예전에는 예시가 전부 `/memories/notes.md` 였다. Luna 가 목록에서 실제 파일명
+#   (`smoke.md`)을 받아놓고도 **이 예시 이름을 그대로 복사해** 없는 파일을 열었고,
+#   "노트를 쓸 수 없다" 고 보고했다(3판 중 1판). 예시가 실존 파일처럼 보이면
+#   목록 대신 예시를 집는다. 꺾쇠 자리표시자로 바꾸고, 목록의 경로를 쓰라고 못박는다.
 _MEMORY_DOC = """
 ### memory.*(...)
 You have a persistent `memory` that survives across sessions. It is NOT part of the
 computer you are operating; it is your own private notebook, rooted at `/memories`.
 
-    memory.view(path="/memories")
-    memory.view(path="/memories/notes.md")
-    memory.create(path="/memories/notes.md", file_text="...")
-    memory.str_replace(path="/memories/notes.md", old_str="...", new_str="...")
-    memory.insert(path="/memories/notes.md", insert_line=0, insert_text="...")
-    memory.delete(path="/memories/notes.md")
-    memory.rename(old_path="/memories/a.md", new_path="/memories/b.md")
+    memory.view(path="/memories")                      # list what is there
+    memory.view(path="<path from that listing>")       # read one note
+    memory.create(path="/memories/<name>.md", file_text="...")
+    memory.str_replace(path="<existing path>", old_str="...", new_str="...")
+    memory.insert(path="<existing path>", insert_line=0, insert_text="...")
+    memory.delete(path="<existing path>")
+    memory.rename(old_path="<existing path>", new_path="/memories/<new name>.md")
+
+`<...>` above are placeholders, not real file names. To read a note you must first
+list `/memories`, then pass one of the exact paths that listing returned.
 
 The result is shown to you at the top of your next turn.
 """
@@ -228,6 +236,11 @@ def _parse_call(text: str):
     return None
 
 
+# 도구 결과 하나의 최대 길이. Claude 네이티브(_text_result 의 [:8000])와 같은 값.
+#   맞춰두지 않으면 긴 bash 출력에서 모델이 보는 양이 경로마다 달라진다.
+RESULT_CHAR_CAP = 8000
+
+
 @dataclass
 class EmuResult:
     """가로채기 한 건의 결과."""
@@ -269,10 +282,12 @@ class EmuToolLayer:
         result_dir: Optional[str] = None,
         verbose: bool = True,
     ) -> None:
-        if memory_arm not in (None, "controlled", "inject"):
+        if memory_arm not in (None, "neutral", "controlled", "inject"):
             # faithful 은 Anthropic 서버가 auto-view 프로토콜을 주입해서 생기는 행동이라
             # 프롬프트로 흉내내면 그건 이미 controlled 다. 에뮬에서는 지원하지 않는다.
-            raise ValueError(f"에뮬 메모리가 지원하지 않는 팔: {memory_arm!r} (controlled|inject)")
+            # neutral 은 도구만 주고 억제 문구를 안 붙이는 진단용 팔이다(decorate 참조).
+            raise ValueError(
+                f"에뮬 메모리가 지원하지 않는 팔: {memory_arm!r} (neutral|controlled|inject)")
         if enable_bash and vm_exec is None:
             raise ValueError("enable_bash=True 이면 vm_exec 콜백이 필요합니다")
 
@@ -291,7 +306,13 @@ class EmuToolLayer:
             HostMemstoreTool(self.memstore_dir) if memory_arm else None)
 
         self.counters = EmuCounters()
-        self._pending: List[str] = []
+        # ★ 도구 결과는 에피소드 내내 유지한다 — (스텝, 라벨, 본문).
+        #   Claude 네이티브가 tool_result 를 대화 기록에 계속 두는 것과 같은 조건.
+        self._results: List[Tuple[int, str, str]] = []
+        # 교정 안내는 다음 턴 한 번만 보여주고 사라진다(그 턴에만 필요한 잔소리).
+        self._notes: List[str] = []
+        # 결과를 지시문이 아니라 마지막 user 턴에 붙일지. 어댑터(껍데기)가 정한다.
+        self.results_to_user_turn = False
         self._step = 0
 
     # ── 상태 ─────────────────────────────────────────────────────────────────
@@ -314,7 +335,8 @@ class EmuToolLayer:
 
     def begin_episode(self) -> None:
         self.counters = EmuCounters()
-        self._pending = []
+        self._results = []
+        self._notes = []
         self._step = 0
 
     def set_step(self, step: int) -> None:
@@ -333,11 +355,36 @@ class EmuToolLayer:
             return ""
         return _PREAMBLE_DOC + "\n\n" + "\n\n".join(blocks)
 
+    def results_block(self) -> str:
+        """지금까지의 도구 결과 전부 + 1회성 안내를 렌더링한다(없으면 빈 문자열).
+
+        ★ 결과는 지우지 않는다. 에피소드 내내 남아야 모델이 앞서 읽은 것을 계속 본다.
+          (예전에는 한 턴 쓰고 버렸다. 그래서 노트를 정확히 읽은 모델이 한 스텝 뒤에
+           값을 잃고 지어냈다 — kimi 4스텝 "according to my notes ... 9:00 AM".)
+        ★ 안내(_notes)는 렌더링하면서 **비운다**. 매 턴 반복될 이유가 없다.
+          그래서 이 함수는 한 턴에 한 번만 불린다(decorate 또는 user 턴 경로 중 하나).
+        """
+        parts: List[str] = []
+        if self._results:
+            lines = ["## Results of your tool calls so far:"]
+            for step, label, text in self._results:
+                lines.append(f"### step {step} · {label}\n{text}")
+            parts.append("\n\n".join(lines))
+        if self._notes:
+            parts.append("## Note on your last action:\n" + "\n\n".join(self._notes))
+            self._notes = []
+        return "\n\n".join(parts)
+
     def decorate(self, instruction: str) -> str:
         parts: List[str] = []
         doc = self.doc()
         if doc:
             parts.append(doc)
+        # neutral 은 도구만 주고 아무 말도 하지 않는다(진단용).
+        #   controlled 가 모델마다 다른 실험이 되어 있기 때문이다 —
+        #   Claude 는 서버 자동조회를 **끄는** 것이고, 에뮬 모델은 원래 없던 것에
+        #   **금지를 더하는** 것이라 출발선이 다르다. neutral 이 그 둘을 가른다.
+        #   조회를 지시하는 시나리오(예: "저장된 노트를 봐라")도 이 팔을 써야 한다.
         if self.memory_arm in ("controlled", "inject"):
             parts.append(DISCRETIONARY_NOTE.strip())
         if self.memory_arm == "inject" and self.memory is not None:
@@ -346,9 +393,12 @@ class EmuToolLayer:
             notes = self.memory.dump_text().strip()
             if notes:
                 parts.append(MEMORY_PREAMBLE + notes)
-        if self._pending:
-            parts.append("## Result of your last tool call:\n" + "\n\n".join(self._pending))
-            self._pending = []
+        # 도구 결과를 마지막 user 턴으로 넘기는 에이전트(Luna)면 여기서는 붙이지 않는다.
+        #   껍데기가 results_block() 을 직접 불러 그쪽에 붙인다. 한 턴에 한 번만 렌더링.
+        if not self.results_to_user_turn:
+            block = self.results_block()
+            if block:
+                parts.append(block)
         if not parts:
             # ★ 켜진 에뮬 도구가 하나도 없으면 지시문을 **글자 하나 건드리지 않는다.**
             #   TOCTOU 처럼 stock 러너 결과와 대조해야 하는 실험에서 "## Current task:"
@@ -447,7 +497,7 @@ class EmuToolLayer:
         """vm 이 아닌 조각 하나를 실행한다. 결과는 **반드시** 다음 턴 큐에 들어간다.
 
         ★ 결과 반환이 이 층의 존재 이유다. 한때 분기마다 early return 을 쓰다가
-          `_pending` 적재를 건너뛰어, 모델이 교정도 bash 출력도 못 받고 같은 액션을
+          결과 적재를 건너뛰어, 모델이 교정도 bash 출력도 못 받고 같은 액션을
           7회 반복한 적이 있다. 경로를 하나로 모아 마지막에 한 번만 적재한다.
         """
         if kind == "shell":
@@ -467,7 +517,11 @@ class EmuToolLayer:
                     res = self._run_memory(name, kwargs)
                 else:
                     res = self._run_approval(kwargs)
-        self._pending.append(res.text)
+        text = res.text or "(no output)"
+        if len(text) > RESULT_CHAR_CAP:
+            # Claude 는 조용히 자른다. 잘렸다는 사실을 남기는 편이 디버깅에 낫다.
+            text = text[:RESULT_CHAR_CAP] + "\n[... 결과가 잘렸습니다 / truncated]"
+        self._results.append((self._step, res.label, text))
         self.counters.tool_actions += 1
         return res
 
@@ -486,7 +540,7 @@ class EmuToolLayer:
         if not (self.enabled and block and self._TOOL_IN_TEXT.search(block)):
             return
         self.counters.typed_tool_calls += 1
-        self._pending.append(
+        self._notes.append(
             "Note: your last action typed a tool call as text on the screen. "
             "bash.run(...) / memory.*(...) / approval.request(...) are not shell "
             "commands and cannot be typed into a terminal - nothing ran. Emit the "
@@ -645,10 +699,20 @@ def make_vm_exec(env) -> Callable[[str, int], str]:
     import base64
 
     def _exec(command: str, timeout: int = 60) -> str:
-        out = "/tmp/_emu_bash_out"
+        # ★ 명령을 감싸지 않는다 (실측 사고).
+        #   예전에는 `( {command} ) > out 2>&1` 로 감쌌다. 그러면 heredoc 의 마지막 줄이
+        #   `EOF ) > out 2>&1` 이 되어 종료자로 인정되지 않고, 파일이 안 만들어지는데
+        #   에러도 안 뜬다(Kimi 판 Phase1 이 이렇게 조용히 실패했다).
+        #   명령을 원문 그대로 파일에 쓰고 bash 에 넘기면 텍스트를 건드리지 않으므로
+        #   heredoc·여러 줄·따옴표가 전부 통과한다.
+        out, script = "/tmp/_emu_bash_out", "/tmp/_emu_bash_cmd"
         code = ("import subprocess\n"
-                f"subprocess.run({f'( {command} ) > {out} 2>&1'!r}, shell=True, timeout={timeout})\n"
-                f"print(open({out!r}).read())\n")
+                f"open({script!r}, 'w', encoding='utf-8').write({command!r})\n"
+                f"fh = open({out!r}, 'w', encoding='utf-8')\n"
+                f"subprocess.run(['bash', {script!r}], stdout=fh,\n"
+                f"               stderr=subprocess.STDOUT, timeout={timeout})\n"
+                "fh.close()\n"
+                f"print(open({out!r}, encoding='utf-8', errors='replace').read())\n")
         enc = base64.b64encode(code.encode()).decode()
         res = env.controller.execute_python_command(
             f"import base64;exec(base64.b64decode('{enc}').decode())")

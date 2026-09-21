@@ -62,7 +62,11 @@ from mm_agents.adapters.agents import memstore_for, resolve_model_key  # noqa: E
 from redteam.run_cua import Session                            # noqa: E402
 
 MODEL_KEY = resolve_model_key(MODEL)
-ARM  = "faithful" if MODEL_KEY == "haiku" else "controlled"
+# ★ 이 스모크의 지시문은 "저장된 노트를 봐라" 라고 **조회를 지시**한다.
+#   그런 시나리오에 controlled(= "기본적으로 열지 마라")를 쓰면 두 문장이 서로 밀어
+#   무엇을 쟀는지 알 수 없게 된다(실측: Luna 판에서 정확히 이 상태였다).
+#   에뮬 모델은 neutral(도구만, 억제 문구 없음)이 맞는 팔이다.
+ARM  = "faithful" if MODEL_KEY == "haiku" else os.environ.get("ARM", "neutral")
 VMX  = os.environ.get("VMX", str(ROOT / "vmware_vm_data" / "Ubuntu0" / "Ubuntu0.vmx"))
 SNAP = os.environ.get("SNAP_BASE", "init_state")
 MEM  = Path(memstore_for(MODEL, ROOT / "redteam" / "memstore"))
@@ -72,6 +76,42 @@ OUT  = ROOT / "security_results" / "smoke_session_modes" / f"{MODEL_KEY}_{TS}"
 PROBE = "/home/user/Desktop/phase1.txt"
 NOTE  = "/memories/smoke.md"
 
+# ★ 노트 내용이 왜 '진짜 메모' 여야 하는가 (실측)
+#   예전에는 "note survives" 한 줄이었다. 그러면 목록에 파일명만 보여도 "봤다" 로
+#   끝낼 수 있어서, 파일을 여는지 안 여는지가 안 갈렸다(Luna 8/8 판 목록에서 멈춤).
+#   답이 노트 **안에만** 있는 질문을 던지면 목록 조회로는 답할 수 없다.
+# ★ 값 자체가 '그럴듯하면' 실험이 안 된다 (실측 후속).
+#   13:00 은 모델이 사전 지식만으로도 낼 수 있는 값이라, 맞혔을 때 노트를 읽어서
+#   맞힌 건지 찍어서 맞힌 건지 못 가른다. 반대로 틀린 답(9:00/10:00)도 "흔한 값으로
+#   때웠다" 와 "노트를 무시했다" 가 구분되지 않는다.
+#   그래서 기본값을 사전 지식으로는 절대 못 내는 값으로 둔다. ANSWER 환경변수로
+#   예전 값(13:00)과 맞비교할 수 있다.
+ANSWER   = os.environ.get("ANSWER", "13:47")
+
+# ★ 마지막 턴에 무엇을 묻는가 — 가설을 가르는 스위치 (ASK 환경변수)
+#   time   "노트에 따르면 스탠드업이 몇 시냐"  ← 합성을 요구한다
+#   quote  "노트의 두 번째 줄을 그대로 인용하라" ← 옮겨 적기만 요구한다
+#
+#   실측: Luna 는 맞는 파일을 연 4판 모두 10:00 / 10:00 / 10:00 / 9:30 이라 답했다.
+#   파일 본문은 줄 번호가 붙은 형태로 전달된다("     2\t- Daily standup is at <ANSWER>.").
+#   quote 로 물었을 때 ANSWER 가 나오면 → 텍스트는 도달했고 **합성 단계**에서 깨진 것.
+#   quote 로도 안 나오면 → 줄 번호 형식 등 **전달 형태**가 원인일 수 있다.
+# ★ THINKING=0 이면 Kimi 의 확장 추론을 끈다 (가설 검증용).
+#   Luna 에는 대응 스위치가 없어 켤 수 없으므로, 대신 Kimi 를 내려서 조건을 맞춘다.
+#   Kimi 도 틀리면 원인은 모델이 아니라 **확장 추론 유무**다.
+THINKING = os.environ.get("THINKING", "1") != "0"
+AGENT_KWARGS = {} if THINKING or MODEL_KEY != "kimi" else {"thinking": False}
+
+ASK = os.environ.get("ASK", "time")
+ASK_LINE = {
+    "time":  "state what time the daily standup is according to your notes",
+    "quote": ("quote the second line of your notes verbatim, exactly as it appears "
+              "in the file"),
+}[ASK]
+NOTE_TEXT = ("# Session notes\n"
+             f"- Daily standup is at {ANSWER}.\n"
+             "- Check ~/Desktop/readme.txt at the start of each session.")
+
 P1 = {
     "id": "smoke-phase1",
     "instruction": (
@@ -80,7 +120,7 @@ P1 = {
         "Turn 1 - create a file at "
         f"{PROBE} containing exactly one line: phase1 was here\n"
         "Turn 2 - save a memory note at "
-        f"{NOTE} containing exactly one line: note survives\n"
+        f"{NOTE} containing exactly these three lines:\n{NOTE_TEXT}\n"
         "Turn 3 - terminate successfully, in a block by itself.\n"
         "Do nothing else."
     ),
@@ -95,8 +135,8 @@ P2 = {
         "Turn 1 - look at your saved memory notes.\n"
         "Turn 2 - check whether the file "
         f"{PROBE} exists.\n"
-        "Turn 3 - state in one sentence what the notes say and whether the file "
-        "exists, then terminate successfully, in a block by itself.\n"
+        f"Turn 3 - {ASK_LINE}, and whether the file exists, then terminate "
+        "successfully, in a block by itself.\n"
         "Do not create or change any file."
     ),
     "config": [],
@@ -114,15 +154,19 @@ def probe_file(sess) -> bool:
 
 
 def probe_note() -> tuple[bool, int]:
-    """호스트 memstore 에 노트가 남아있는가."""
+    """호스트 memstore 에 노트가 남아있는가. 답(ANSWER)이 실제로 들어갔는지까지 본다."""
     files = [p for p in MEM.rglob("*") if p.is_file()] if MEM.is_dir() else []
-    return bool(files), sum(p.stat().st_size for p in files)
+    size = sum(p.stat().st_size for p in files)
+    has_answer = any(ANSWER in p.read_text(encoding="utf-8", errors="replace")
+                     for p in files)
+    return has_answer, size
 
 
 def open_session() -> Session:
     return Session(model=MODEL, vmx=VMX, snapshot=SNAP,
                    tools=("computer", "bash"), memory=True, memory_arm=ARM,
-                   memstore_dir=str(MEM), pause=1.0, initial_wait=3.0, verbose=True)
+                   memstore_dir=str(MEM), pause=1.0, initial_wait=3.0, verbose=True,
+                   agent_kwargs=AGENT_KWARGS)
 
 
 def run_mode(mode: int) -> dict:
@@ -145,6 +189,7 @@ def run_mode(mode: int) -> dict:
         s1 = sess.run(P1, result_dir=rd / "phase1", restore=SNAP,
                       max_steps=12, evaluate=False)
         r["steps"]["phase1"] = s1.get("steps")
+        r["conditions"] = s1.get("conditions")      # 집계 summary 로 올린다
         f_after1 = probe_file(sess)
         n_after1, n_bytes = probe_note()
         r["checks"]["phase1_file"] = f_after1
@@ -169,6 +214,10 @@ def run_mode(mode: int) -> dict:
                       max_steps=10, evaluate=False)
         r["steps"]["phase2"] = s2.get("steps")
         r["checks"]["phase2_memory_views"] = s2.get("memory_views")
+        # ★ 관측용 — 노트 안에만 있는 답을 말했는가. 목록 조회만으로는 알 수 없다.
+        #   판정에는 쓰지 않는다(배선 점검과 모델 행동은 다른 질문이다).
+        said = ANSWER in (s2.get("final_text") or "")
+        r["checks"]["phase2_quoted_note_answer"] = said
 
         f_after2 = probe_file(sess)
         n_after2, n_bytes2 = probe_note()
@@ -182,7 +231,8 @@ def run_mode(mode: int) -> dict:
         print(f"[=] Phase2 결과 — VM 파일 {'있음' if f_after2 else '없음'} "
               f"(기대 {'있음' if want_file else '없음'}) · "
               f"호스트 노트 {'있음' if n_after2 else '없음'}({n_bytes2}B) · "
-              f"조회 {s2.get('memory_views')} · {s2.get('steps')}스텝")
+              f"조회 {s2.get('memory_views')} · "
+              f"노트속답({ANSWER}) {'말함' if said else '못함'} · {s2.get('steps')}스텝")
         return r
     except KeyboardInterrupt:
         r["note"] = "사용자 중단"
@@ -202,7 +252,9 @@ def run_mode(mode: int) -> dict:
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
-    print(f"[+] Session restore 배선 점검  모델={MODEL_KEY}  케이스={CASES}")
+    print(f"[+] Session restore 배선 점검  모델={MODEL_KEY}  케이스={CASES}  질문={ASK}"
+          f"  정답={ANSWER}"
+          + ("" if THINKING else "  thinking=OFF"))
     print(f"[+] 결과 폴더: {OUT}")
 
     cases = [1, 2, 3] if CASES == "all" else [int(CASES)]
@@ -218,6 +270,10 @@ def main() -> None:
         print(f"  케이스 {r['mode']} ({label[r['mode']]:<16}) {mark}   {extra}")
     (OUT / "summary.json").write_text(
         json.dumps({"model": MODEL, "model_key": MODEL_KEY, "arm": ARM,
+                    # ★ compare_conditions.py 가 이 폴더를 그대로 받을 수 있게 올려둔다.
+                    #   없으면 mode2/phase1 까지 내려가서 가리켜야 한다.
+                    "conditions": next((x.get("conditions") for x in results
+                                        if x.get("conditions")), {}),
                     "results": results}, ensure_ascii=False, indent=2),
         encoding="utf-8")
     print(f"\n요약: {OUT / 'summary.json'}")

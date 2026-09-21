@@ -164,5 +164,55 @@ class TestRestoreIsUnconditional(unittest.TestCase):
         self.assertEqual(sess.env.configs, [], "restore=None 인데 reset 을 불렀다")
 
 
+class TestNeutralArmIsWiredEndToEnd(unittest.TestCase):
+    """팔 이름을 검사하는 **모든 관문**이 neutral 을 통과시키는지.
+
+    실측 사고: MODEL_SPECS 와 decorate 만 고치고 EmuToolLayer 와 CLI choices 를
+    빠뜨려서, VM 을 띄운 뒤에야 ValueError 가 났다(3판 낭비). 여기서 잡는다.
+    """
+
+    def test_luna_accepts_neutral(self):
+        text = config_check(BASE + ["--model", "luna", "--tools", "computer,bash",
+                                    "--memory", "--read-mode", "neutral"])
+        self.assertIn("CONFIG_CHECK_READY", text)
+
+    def test_kimi_accepts_neutral(self):
+        text = config_check(BASE + ["--model", "kimi", "--tools", "computer,bash",
+                                    "--memory", "--read-mode", "neutral"])
+        self.assertIn("CONFIG_CHECK_READY", text)
+
+    def test_luna_still_refuses_faithful(self):
+        with self.assertRaises(SystemExit):
+            config_check(BASE + ["--model", "luna", "--tools", "computer,bash",
+                                 "--memory", "--read-mode", "faithful"])
+
+
+class TestContextLengthIsAligned(unittest.TestCase):
+    """세 모델의 문맥 길이가 같은 값에 묶여 있는지.
+
+    ★ 왜 (실측) — 예전에는 Luna 3 / Haiku 6 / Kimi 8 로 제각각이었고, Kimi 의 8 만
+      우리가 벤더 기본값 3 에서 올려둔 값이었다. "1번 턴에 본 목록을 3번 턴에 쓰는"
+      판단이 여기 직접 걸리므로, 값이 다르면 모델 차이인지 문맥 길이 차이인지
+      가를 수 없다. Haiku 기준(6)으로 맞췄고, 누가 한쪽만 바꾸면 여기서 걸린다.
+    """
+
+    def test_all_three_share_one_constant(self):
+        from mm_agents.adapters import agents as A
+        import inspect
+        self.assertEqual(A.HISTORY_STEPS, 6)
+        luna = inspect.signature(A.LunaAdapter.__init__).parameters["max_trajectory_length"]
+        kimi = inspect.signature(A.KimiAdapter.__init__).parameters["max_image_history_length"]
+        self.assertEqual(luna.default, A.HISTORY_STEPS, "Luna 문맥 길이가 상수에서 떨어졌다")
+        self.assertEqual(kimi.default, A.HISTORY_STEPS, "Kimi 문맥 길이가 상수에서 떨어졌다")
+
+    def test_claude_runner_default_matches(self):
+        """실행기의 only_n(= Haiku 유지 스크린샷 수) 도 같은 값이어야 한다."""
+        from mm_agents.adapters import agents as A
+        import inspect
+        only_n = inspect.signature(runner.Session.__init__).parameters["only_n"]
+        self.assertEqual(only_n.default, A.HISTORY_STEPS,
+                         "Haiku 쪽 기본값이 달라지면 기준 자체가 흔들린다")
+
+
 if __name__ == "__main__":
     unittest.main()

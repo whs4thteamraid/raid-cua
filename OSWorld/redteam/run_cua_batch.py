@@ -51,7 +51,8 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument("--memory", action="store_true")
     parser.add_argument("--memstore-dir", default=None)
     parser.add_argument(
-        "--read-mode", choices=("faithful", "controlled", "inject"), default="faithful"
+        "--read-mode", choices=("faithful", "neutral", "controlled", "inject"),
+        default="faithful"
     )
     parser.add_argument("--mcp-config", default=None)
 

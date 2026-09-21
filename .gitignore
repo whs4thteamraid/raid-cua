@@ -39,3 +39,4 @@ OSWorld/security_scenarios/*/
 *.bak_*
 *.bak
 backup_*.tgz
+OSWorld/redteam/memstore*/
