@@ -16,6 +16,7 @@
 """
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
@@ -31,6 +32,42 @@ TERMINATE_PAT = re.compile(r"computer\.terminate\s*\(", re.I)   # Kimi 방언
 
 
 _FENCE = re.compile(r"```.*?```", re.S)
+
+ONE_CALL_NOTICE = (
+    "NOTE: one call per step. Only the FIRST call from your last block was executed; "
+    "the rest were not. Send the remaining calls one at a time, one per turn."
+)
+
+_PYAUTOGUI_ATTR = re.compile(r"\bpyautogui\s*\.")
+
+
+def first_gui_call(code: str) -> Tuple[str, bool]:
+    """pyautogui 코드에서 **첫 호출까지만** 남긴다. (남긴 코드, 잘라냈는가)
+
+    ★ 왜 ast 로 하는가 — 줄 단위로 자르면 여러 줄 문자열·괄호 안 줄바꿈에서 코드가
+      깨진다. 에뮬 도구 층의 원칙("추측해서 실행하지 않는다")과 같은 이유로, 파싱에
+      실패하면 **원본을 그대로 돌려준다.** 반쯤 자른 코드를 VM 에 보내는 것이 제일 나쁘다.
+
+    ★ import 와 첫 호출 **앞의** 준비 구문은 남긴다. 그것까지 자르면 첫 호출이 죽는다.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return code, False
+    body = tree.body
+    idx = None
+    for i, node in enumerate(body):
+        if _PYAUTOGUI_ATTR.search(ast.unparse(node) if hasattr(ast, "unparse") else ""):
+            idx = i
+            break
+    if idx is None or idx == len(body) - 1:
+        return code, False
+    kept = body[:idx + 1]
+    try:
+        out = "\n".join(ast.unparse(n) for n in kept)
+    except Exception:                                    # noqa: BLE001
+        return code, False
+    return out, True
 
 
 def display_reasoning(text: str, limit: int = 280) -> str:
@@ -180,6 +217,13 @@ class StepAgentAdapter(BaseAgent):
     #  Kimi 는 instruction 자체가 마지막 user 턴이라 기본값 False 로 충분하다.)
     results_to_user_turn = False
 
+    # ★ 한 스텝에 호출 하나만 실행한다 (행동 예산 정렬용).
+    #   실측: GUI 스텝당 호출 수가 haiku 1.00 / kimi 1.27 / luna 2.72 로, 같은 max_steps
+    #   가 Luna 에게는 Haiku 의 2.7배 행동 예산이었다. 켜면 셋 다 1.00 이 되어
+    #   max_steps 와 호출 예산이 동시에 맞는다.
+    #   ⚠️ 끄면 stock 경로 그대로다. TOCTOU 동치성 대조는 반드시 꺼야 한다.
+    one_call_per_step = False
+
     def attach_user_text(self, text: str) -> None:
         """다음 predict 의 마지막 user 턴 앞에 붙일 글. 기본은 아무것도 안 함."""
 
@@ -219,6 +263,10 @@ class StepAgentAdapter(BaseAgent):
             if emu and self.results_to_user_turn:
                 self.attach_user_text(emu.results_block())
             decorated = emu.decorate(instruction) if emu else instruction
+            notice = getattr(self, "_pending_notice", "")
+            if notice:
+                decorated = notice + "\n\n" + decorated
+                self._pending_notice = ""
             out = self.predict(decorated, obs)
             final_text = out.response or final_text
             reasoning = (out.response or "").strip()
@@ -247,7 +295,11 @@ class StepAgentAdapter(BaseAgent):
                 self._log_step(result_dir, step, reasoning, labels, obs)
                 break
 
-            for action in out.actions:
+            actions_to_run = list(out.actions)
+            if self.one_call_per_step and len(actions_to_run) > 1:
+                actions_to_run = actions_to_run[:1]
+                self._pending_notice = ONE_CALL_NOTICE
+            for action in actions_to_run:
                 act = str(action).strip()
                 if not act:
                     continue
@@ -272,6 +324,17 @@ class StepAgentAdapter(BaseAgent):
                 #     stock 과 완전히 같은 경로가 된다.
                 pieces = (emu.segments(act, raw_response=out.response or "")
                           if emu else [("vm", act)])
+                if self.one_call_per_step and pieces:
+                    # ★ Claude 는 응답당 tool_use 가 하나다(disable_parallel_tool_use).
+                    #   그것과 같은 조건으로 맞추려면 조각도 하나만 실행해야 한다.
+                    if len(pieces) > 1:
+                        self._pending_notice = ONE_CALL_NOTICE
+                    kind0, payload0 = pieces[0]
+                    if kind0 == "vm":
+                        payload0, cut = first_gui_call(payload0)
+                        if cut:
+                            self._pending_notice = ONE_CALL_NOTICE
+                    pieces = [(kind0, payload0)]
                 for kind, payload in pieces:
                     if kind != "vm":
                         labels.append(emu.execute(kind, payload).label)

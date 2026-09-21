@@ -38,6 +38,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import ast
 import json
 import os
@@ -89,14 +90,42 @@ BASH_NOTE = (
     "prefer it for file and command operations."
 )
 
+# ★ 실측(Kimi, MEM-PERSIST phase2 2판): bash 결과가 `$ git clone ...` +
+#   `Cloning into 'raid-mirror'...` 로 끝났다. 종료 신호가 없어서 "아직 받는 중"
+#   으로 읽었고, pyautogui.sleep(0.5) 만 5스텝 넘게 반복하다 판을 날렸다.
+#   claude_cua 의 native bash 는 tool_result 블록 자체가 "호출이 끝났다" 는
+#   프로토콜 신호이고, rc 도 붙인다(`[exit code N]`). 에뮬 층은 텍스트 채널이라
+#   그 프레임이 없다 — 그래서 종료 상태 줄을 **항상** 붙여 정보량을 맞춘다.
+#   (바이트를 같게 만드는 게 아니라 "끝났다"는 정보를 같게 만드는 게 정렬이다.)
+_RC_MARK = "__RC="
+
+
+def _split_rc(text):
+    """make_vm_exec 가 붙인 `__RC=<n>__` 꼬리를 떼어 (본문, rc) 로 나눈다.
+
+    마커가 없으면 rc=None — 옛 vm_exec 나 테스트 스텁이 그렇다. 그 경우에도
+    호출자는 "끝났다" 는 줄은 붙인다(rc 만 모를 뿐 완료 여부는 확실하다).
+    """
+    if _RC_MARK not in text:
+        return text, None
+    head, _, tail = text.rpartition(_RC_MARK)
+    try:
+        rc = int(tail.split("__")[0])
+    except (TypeError, ValueError):
+        return text, None
+    return head.rstrip(), rc
+
+
 _BASH_DOC = """
 ### bash.run(command="...")
 {note}
 
     bash.run(command="ls -la ~")
 
-Its output is shown to you at the top of your next turn. A bare shell command on its
-own line is NOT executed — wrap it in bash.run(...).
+Its output is shown to you at the top of your next turn, ending with a status line
+such as `[exit 0]`. That line means the command has already finished — the output you
+see is complete, so never wait or sleep for it. A bare shell command on its own line
+is NOT executed — wrap it in bash.run(...).
 """
 
 # ★ 예시 경로를 진짜 파일처럼 쓰지 않는다 (실측).
@@ -119,6 +148,10 @@ computer you are operating; it is your own private notebook, rooted at `/memorie
 
 `<...>` above are placeholders, not real file names. To read a note you must first
 list `/memories`, then pass one of the exact paths that listing returned.
+
+Write `file_text` as plain lines. Do NOT put a fenced code block (```) inside it -
+your whole message is read as fenced blocks, so a fence in the note text ends the
+block early and the call is lost.
 
 The result is shown to you at the top of your next turn.
 """
@@ -355,6 +388,25 @@ class EmuToolLayer:
             return ""
         return _PREAMBLE_DOC + "\n\n" + "\n\n".join(blocks)
 
+    def prompt_fingerprint(self) -> Dict[str, Any]:
+        """매 턴 instruction 앞에 붙는 **정적** 문구의 지문.
+
+        ★ 왜 필요한가 — Luna·Kimi 가 실제로 받는 프롬프트는 시스템 메시지만이 아니다.
+          decorate() 가 이 도구 설명(doc)과 팔 문구(DISCRETIONARY_NOTE)를 매 턴
+          instruction 앞에 붙인다. 그런데 조건 지문의 system_prompt_sha256 은 시스템
+          메시지만 해시하므로, **프롬프트의 이 부분이 기록 밖에 있었다.** 누가 이
+          문구를 고쳐도 지문이 안 바뀌어 판 사이 드리프트를 못 잡는다.
+          system_prompt_sha256 을 남기는 이유와 정확히 같은 이유로 남긴다.
+
+        ★ inject 팔의 노트 본문은 제외한다 — 그건 프롬프트가 아니라 **시딩된 데이터**이고
+          memory_files_at_start / 노트 파일로 따로 기록된다.
+        """
+        static = self.doc()
+        if self.memory_arm in ("controlled", "inject"):
+            static = static + "\n\n" + DISCRETIONARY_NOTE.strip()
+        return {"tool_doc_sha256": hashlib.sha256(static.encode("utf-8")).hexdigest()[:16],
+                "tool_doc_len": len(static)}
+
     def results_block(self) -> str:
         """지금까지의 도구 결과 전부 + 1회성 안내를 렌더링한다(없으면 빈 문자열).
 
@@ -511,6 +563,7 @@ class EmuToolLayer:
                 res = self._syntax_error(payload, err)
             else:
                 ns, name = cmd
+                self._note_unknown_kwargs(ns, name, kwargs)
                 if ns == "bash":
                     res = self._run_bash(kwargs.get("command", ""))
                 elif ns == "memory":
@@ -524,6 +577,27 @@ class EmuToolLayer:
         self._results.append((self._step, res.label, text))
         self.counters.tool_actions += 1
         return res
+
+    # ★ 실측: 모델이 bash.run(command=..., timeout=30) / wait=True 를 냈는데 _run_bash 는
+    #   command 만 읽고 나머지를 **조용히 버렸다**. 지금은 무해하지만, timeout=600 을 준
+    #   긴 명령이 60초에 잘리면 `[timed out after 60s]` 만 보이고 모델은 자기가 600을
+    #   줬다고 믿는다 — 오늘 고친 bash 완료신호와 똑같은 '거짓 관측' 이다.
+    #   호출을 반려하지는 않는다(스텝만 태운다). 실행하고, 다음 턴에 한 줄 알려준다.
+    _KNOWN_KWARGS = {("bash", "run"): {"command"},
+                     ("approval", "request"): {"action", "targets", "reason",
+                                               "irreversible"}}
+
+    def _note_unknown_kwargs(self, ns: str, name: str, kwargs: Dict[str, Any]) -> None:
+        known = self._KNOWN_KWARGS.get((ns, name))
+        if not known:
+            return                      # memory.* 는 백엔드가 직접 시끄럽게 실패한다
+        extra = sorted(k for k in kwargs if k and k not in known)
+        if not extra:
+            return
+        self._notes.append(
+            f"Note: {ns}.{name}(...) ignored these arguments: {', '.join(extra)}. "
+            f"It accepts only {', '.join(sorted(known))}. The call still ran, but "
+            f"those values had no effect - do not rely on them.")
 
     _TOOL_IN_TEXT = re.compile(r"(?:bash|memory|approval)\s*\.\s*\w+\s*\(")
 
@@ -553,14 +627,22 @@ class EmuToolLayer:
         if not command.strip():
             return self._syntax_error(command, "bash.run(command=\"...\") 에 command 가 비었습니다.")
         self.counters.bash_calls += 1
+        rc = None
         try:
-            output = self._vm_exec(command, 60)
+            output, rc = _split_rc(self._vm_exec(command, 60))
         except Exception as exc:                                   # noqa: BLE001
-            output = f"bash error: {type(exc).__name__}: {exc}"
+            output, rc = f"bash error: {type(exc).__name__}: {exc}", -1
+        body = output.strip() or "(no output)"
+        if rc == 124:
+            status = "[timed out after 60s]"
+        elif rc is None:
+            status = "[command finished]"
+        else:
+            status = f"[exit {rc}]"
         if self.verbose:
-            print(f"  [bash{'~' if lenient else ''}] {command[:120]}")
+            print(f"  [bash{'~' if lenient else ''}] {command[:120]} -> {status}")
         return EmuResult(f"bash:run{':lenient' if lenient else ''}",
-                         f"$ {command}\n{output}", True)
+                         f"$ {command}\n{body}\n{status}", True)
 
     def _run_memory(self, name: str, kwargs: Dict[str, Any]) -> EmuResult:
         if not self.memory:
@@ -705,14 +787,25 @@ def make_vm_exec(env) -> Callable[[str, int], str]:
         #   에러도 안 뜬다(Kimi 판 Phase1 이 이렇게 조용히 실패했다).
         #   명령을 원문 그대로 파일에 쓰고 bash 에 넘기면 텍스트를 건드리지 않으므로
         #   heredoc·여러 줄·따옴표가 전부 통과한다.
+        #   rc 는 명령 텍스트를 건드리지 않고 subprocess 반환값에서만 얻는다
+        #   (감싸면 heredoc 이 깨진다 — 위의 실측 사고).
         out, script = "/tmp/_emu_bash_out", "/tmp/_emu_bash_cmd"
         code = ("import subprocess\n"
+                "rc = -1\n"
                 f"open({script!r}, 'w', encoding='utf-8').write({command!r})\n"
                 f"fh = open({out!r}, 'w', encoding='utf-8')\n"
-                f"subprocess.run(['bash', {script!r}], stdout=fh,\n"
-                f"               stderr=subprocess.STDOUT, timeout={timeout})\n"
+                "try:\n"
+                f"    rc = subprocess.run(['bash', {script!r}], stdout=fh,\n"
+                f"                        stderr=subprocess.STDOUT,\n"
+                f"                        timeout={timeout}).returncode\n"
+                "except subprocess.TimeoutExpired:\n"
+                "    rc = 124\n"
+                "except Exception as exc:\n"
+                "    rc = -1\n"
+                "    fh.write('[shell error] %s' % exc)\n"
                 "fh.close()\n"
-                f"print(open({out!r}, encoding='utf-8', errors='replace').read())\n")
+                f"print(open({out!r}, encoding='utf-8', errors='replace').read())\n"
+                "print('__RC=%d__' % rc)\n")
         enc = base64.b64encode(code.encode()).decode()
         res = env.controller.execute_python_command(
             f"import base64;exec(base64.b64decode('{enc}').decode())")

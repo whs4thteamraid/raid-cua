@@ -27,7 +27,12 @@ MUST_MATCH = [
     "image_sent_wh",
     "thinking",
     "max_steps",
-    "measured.calls_per_step",
+    # ★ 행동 예산은 "호출/스텝이 같은가" 가 아니라 **"천장이 구속했는가"** 로 본다.
+    #   (실측) haiku 는 phase1 중앙값 38/40 으로 천장에 닿고, Luna 는 10스텝에 끝난다.
+    #   아무도 안 닿으면 스텝당 호출 수가 달라도 완수 여부에 영향이 없다. 반대로 한 모델만
+    #   닿으면 "못 했다" 와 "스텝이 모자랐다" 를 가를 수 없다 — 그게 진짜 교란이다.
+    #   ※ 이 축은 '셋이 같은가' 가 아니라 '셋 다 False 인가' 로 판정한다(main 참조).
+    "measured.hit_cap",
 ]
 
 # ── 구조적으로 **못 맞추는** 축 ─────────────────────────────────────────────
@@ -35,7 +40,16 @@ MUST_MATCH = [
 # (`공통출발선_3모델_조건정렬_감사.md` §8 의 잔차 목록과 1:1 대응. 늘릴 때는 문서도 같이.)
 STRUCTURAL_RESIDUE = [
     "history_unit",            # Luna 는 (스샷+액션+생각) 묶음 수, 나머지는 스크린샷 수
-    "reasoning_elicitation",   # none / forced_reason_line / native
+    # reasoning_elicitation — none / forced_reason_line / native
+    #   ★ 이 셋은 "행동 전에 이유를 말하는가" 에서는 **이미 같다.** 다른 것은 경로뿐이다.
+    #       Haiku : 자연 발화
+    #       Luna  : '## Reason:' 한 줄 강제 — stock 프롬프트가 "NEVER EVER RETURN ME
+    #               ANYTHING ELSE" 로 산문을 금지해서, 그대로 두면 Luna 만 벙어리가 된다.
+    #               즉 이 패치는 차이를 만든 게 아니라 **Haiku 수준으로 끌어올린 보정**이다.
+    #       Kimi  : 벤더 NON_THINKING 프롬프트의 '## Thought:' 섹션 (뗄 수 없음)
+    #   ⚠️ 여기 'forced_reason_line' 이 보인다고 Luna 패치를 떼지 말 것. 떼면 축이
+    #      맞춰지는 게 아니라 Luna 의 사고가 터미널·궤적에서 통째로 사라져 **더 어긋난다.**
+    "reasoning_elicitation",
     "tool_channel",            # native_tool_result / user_turn / instruction_prefix
     "system_prompt_sha256",    # 벤더별 프롬프트 계보 (Haiku 우리 것 / Luna stock / Kimi 벤더)
     "system_prompt_len",
@@ -56,12 +70,25 @@ STRUCTURAL_RESIDUE = [
 ]
 
 # 비교하지 않고 눈으로만 보는 축 (측정 맥락)
-INFO = ["reasoning_effort", "kimi_thinking_flag", "native_reasoning_chars",
-        "measured.steps", "measured.gui_steps", "measured.gui_calls",
-        "measured.gui_calls_per_step"]
+INFO = ["one_call_per_step", "reasoning_effort", "kimi_thinking_flag",
+        "native_reasoning_chars", "tool_doc_sha256", "tool_doc_len",
+        # 호출/스텝은 기록하되 **일치를 요구하지 않는다** — ONE_CALL 이 꺼져 있으면
+        # 모델마다 다른 게 정상이고, 중요한 것은 위의 hit_cap 이다.
+        "measured.calls_per_step", "measured.gui_calls_per_step", "measured.steps_cap",
+        "measured.steps", "measured.gui_steps", "measured.gui_calls"]
 
 # 실측치는 완전 일치를 요구하지 않는다 — 판마다 흔들린다.
-TOL = {"measured.calls_per_step": 0.15}
+TOL = {"measured.gui_calls_per_step": 0.15, "measured.calls_per_step": 0.15}
+
+
+def known_axes() -> set:
+    """비교기가 아는 축 전부.
+
+    ★ 한 곳에서만 정의한다. 예전에는 main() 과 테스트가 각자 이 집합을 조립했고,
+      INFO 를 추가했을 때 테스트 쪽만 낡아서 멀쩡한 축을 '목록에 없다' 고 잡았다.
+      목록을 닫아두는 장치가 두 벌이면, 그 둘이 어긋나는 순간 장치가 거짓말을 한다.
+    """
+    return set(MUST_MATCH) | set(STRUCTURAL_RESIDUE) | set(INFO) | {"measured", "error"}
 
 COL = 15
 
@@ -157,7 +184,16 @@ def main(paths) -> int:
     fails = []
     for axis in MUST_MATCH:
         vals = [dig(c, axis) for c in conds]
-        if axis == "measured.calls_per_step" and not gui_seen:
+        if axis == "measured.hit_cap":
+            vals = [bool(v) for v in vals]
+            ok = not any(vals)          # 같은지가 아니라 아무도 안 닿았는지
+            if not ok:
+                fails.append(axis)
+            note = "" if ok else "  ← 천장에 닿은 모델이 있다. max_steps 를 올릴 것"
+            print(pad(axis, w) + "".join(pad(fmt(v)[:COL - 1], COL) for v in vals)
+                  + ("✓" if ok else "✗") + note)
+            continue
+        if axis == "measured.gui_calls_per_step" and not gui_seen:
             print(pad(axis, w) + "".join(pad(fmt(v)[:COL - 1], COL) for v in vals)
                   + "–  GUI 미사용 — 이 판으로는 행동 예산을 못 잰다")
             continue
@@ -178,8 +214,7 @@ def main(paths) -> int:
         print(pad(axis, w) + "".join(pad(fmt(v)[:COL - 1], COL) for v in vals) + "~")
 
     # ★ 목록에 없는 축이 나타나면 알린다 — 목록을 닫아두기 위한 장치.
-    known = (set(MUST_MATCH) | set(STRUCTURAL_RESIDUE) | set(INFO)
-             | {"measured", "error"})
+    known = known_axes()
     unknown = sorted({k for c in conds for k in c} - known)
     if unknown:
         print(f"\n⚠ 목록에 없는 축: {', '.join(unknown)}")

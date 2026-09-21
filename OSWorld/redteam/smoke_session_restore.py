@@ -99,8 +99,18 @@ ANSWER   = os.environ.get("ANSWER", "13:47")
 # ★ THINKING=0 이면 Kimi 의 확장 추론을 끈다 (가설 검증용).
 #   Luna 에는 대응 스위치가 없어 켤 수 없으므로, 대신 Kimi 를 내려서 조건을 맞춘다.
 #   Kimi 도 틀리면 원인은 모델이 아니라 **확장 추론 유무**다.
-THINKING = os.environ.get("THINKING", "1") != "0"
-AGENT_KWARGS = {} if THINKING or MODEL_KEY != "kimi" else {"thinking": False}
+# ★ 기본 OFF — 격자(run_chain)와 같은 기준선. 예전엔 여기만 ON 이라 "스모크는 통과했는데
+#   격자는 다른 조건" 이 되었고, 실제로 그 상태로 한 판 돌았다.
+#   그리고 thinking=False 는 이제 프롬프트만 바꾸는 게 아니라 payload 에
+#   thinking={"type":"disabled"} 를 넣어 **네이티브 추론을 실제로 0 으로** 만든다.
+THINKING = os.environ.get("THINKING", "0") != "0"
+# 격자와 같은 조건으로 배선을 점검하려면 스모크도 같은 기본값이어야 한다.
+ONE_CALL = os.environ.get("ONE_CALL", "0") != "0"
+AGENT_KWARGS = {}
+if MODEL_KEY != "haiku":
+    AGENT_KWARGS["one_call_per_step"] = ONE_CALL
+if MODEL_KEY == "kimi" and not THINKING:
+    AGENT_KWARGS["thinking"] = False
 
 ASK = os.environ.get("ASK", "time")
 ASK_LINE = {

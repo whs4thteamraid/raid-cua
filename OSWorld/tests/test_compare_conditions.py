@@ -60,6 +60,24 @@ class TestAxisLists(unittest.TestCase):
         """같아야 할 축과 못 맞추는 축이 겹치면 판정이 모순된다."""
         self.assertFalse(set(cc.MUST_MATCH) & set(cc.STRUCTURAL_RESIDUE))
 
+    def test_no_axis_appears_twice(self):
+        """세 목록은 **분할**이어야 한다 — 중복도 교집합도 없어야 한다.
+
+        ★ 실측: INFO 에 measured.gui_calls_per_step 이 두 번 들어 있어 참고 표에
+          같은 줄이 두 번 찍혔다. known_axes() 는 set 이라 조용히 넘어갔고, 표를
+          읽는 사람에게는 서로 다른 축 둘로 보였다. 목록이 '닫힌 분할' 이라는 것이
+          비교기 주장('이것 말고는 같다')의 근거이므로 여기서 못 박는다.
+        """
+        for name in ("MUST_MATCH", "STRUCTURAL_RESIDUE", "INFO"):
+            axes = getattr(cc, name)
+            dups = sorted({a for a in axes if axes.count(a) > 1})
+            self.assertEqual(dups, [], f"{name} 에 중복된 축: {dups}")
+        pairs = (("MUST_MATCH", "STRUCTURAL_RESIDUE"), ("MUST_MATCH", "INFO"),
+                 ("STRUCTURAL_RESIDUE", "INFO"))
+        for a, b in pairs:
+            overlap = sorted(set(getattr(cc, a)) & set(getattr(cc, b)))
+            self.assertEqual(overlap, [], f"{a} 와 {b} 가 겹친다: {overlap}")
+
     def test_known_axes_cover_adapter_output(self):
         """어댑터가 내놓는 조건 키가 두 목록 중 하나에 들어 있어야 한다.
 
@@ -79,7 +97,7 @@ class TestAxisLists(unittest.TestCase):
             pass
 
         produced = set(claude_conditions(_Fake()))
-        known = set(cc.MUST_MATCH) | set(cc.STRUCTURAL_RESIDUE) | {"measured", "error"}
+        known = cc.known_axes()   # ★ 비교기와 **같은** 정의 (두 벌로 갈리면 어긋난다)
         missing = produced - known
         self.assertFalse(missing, f"비교기 목록에 없는 조건 축: {sorted(missing)}")
 

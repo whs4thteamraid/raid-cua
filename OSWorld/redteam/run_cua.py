@@ -253,6 +253,35 @@ def print_effective_config(config: Dict[str, Any]) -> None:
 # ── 스텝당 실제 호출 수 (측정값) ─────────────────────────────────────────────
 _PY_CALL = re.compile(r"pyautogui\.\w+\s*\(")
 
+# ★ GUI 호출은 모델마다 **라벨 어휘가 다르다** (실측 사고).
+#   Luna·Kimi 는 `pyautogui.click(...)` 문자열을 뱉지만, Claude 의 네이티브 computer
+#   도구는 액션 이름으로 라벨이 찍힌다(left_click / key / type / scroll ...).
+#   pyautogui 만 찾으면 **Claude 의 GUI 는 영원히 0** 으로 세어지고, 클릭을 하고 있는데도
+#   "GUI 미사용" 으로 보고된다. 실제로 haiku 판에서 GUI 12회를 0 으로 세고 있었다.
+#   또한 claude 라벨은 `"+".join(actions)` 이라 한 스텝에 여러 액션이 담길 수 있다.
+_CLAUDE_GUI = frozenset({
+    "left_click", "right_click", "middle_click", "double_click", "triple_click",
+    "mouse_move", "left_click_drag", "left_mouse_down", "left_mouse_up",
+    "scroll", "key", "type", "hold_key", "wait", "screenshot", "cursor_position",
+})
+
+
+def _count_gui(label) -> int:
+    """이 라벨이 GUI 채널에서 몇 번 호출했는가. 도구 호출이면 0.
+
+    ★ 대기·관측(wait/sleep/screenshot)도 센다 — 양쪽 어휘에 모두 있고, 한쪽만 빼면
+      비교가 기울기 때문이다(Kimi 는 pyautogui.sleep, Claude 는 wait 로 같은 일을 한다).
+    """
+    s = str(label).strip()
+    n = len(_PY_CALL.findall(s))
+    if n:
+        return n
+    head = s.split(":")[0].split("(")[0].strip()
+    parts = [x.strip() for x in head.split("+") if x.strip()]
+    if parts and all(x in _CLAUDE_GUI for x in parts):
+        return len(parts)
+    return 0
+
 
 def _measure_calls(result_dir) -> Dict[str, Any]:
     """방금 쓴 trajectory.jsonl 에서 스텝당 실제 호출 수를 센다.
@@ -286,8 +315,7 @@ def _measure_calls(result_dir) -> Dict[str, Any]:
         labels = r.get("tools")
         if not isinstance(labels, list) or not labels:
             continue
-        blob = " ".join(str(x) for x in labels)
-        n_gui = len(_PY_CALL.findall(blob))
+        n_gui = sum(_count_gui(x) for x in labels)
         steps += 1
         calls += n_gui or len(labels)
         if n_gui:
@@ -501,6 +529,13 @@ class Session:
                 cond = {"error": f"{type(exc).__name__}: {exc}"}
         measured = _measure_calls(result_dir)
         if measured:
+            # ★ 행동 예산은 **천장에 닿을 때만** 결과를 바꾼다. 아무도 안 닿았으면
+            #   스텝당 호출 수가 달라도 완수 여부에는 영향이 없다. 그래서 비교해야 할 것은
+            #   "호출/스텝이 같은가" 가 아니라 "예산이 구속했는가" 다.
+            measured["hit_cap"] = bool(
+                measured.get("steps", 0) >= max_steps
+                or result.get("termination") == "max_steps")
+            measured["steps_cap"] = max_steps
             cond["measured"] = measured
         cond.setdefault("max_steps", max_steps)
         result["conditions"] = cond

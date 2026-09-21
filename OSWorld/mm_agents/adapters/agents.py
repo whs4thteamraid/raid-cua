@@ -58,6 +58,9 @@ def claude_conditions(a: Any) -> Dict[str, Any]:
         "thinking":      getattr(a, "thinking", False),
         "reasoning_elicitation": "none",          # 강제 문구 없이 자연 발화
         "tool_channel":  "native_tool_result",
+        # ★ 노브가 아니다. 응답당 tool_use 가 하나로 강제되고(disable_parallel_tool_use),
+        #   실측상 GUI 호출/스텝이 1.00 이었다. 검증은 measured.gui_calls_per_step 으로.
+        "one_call_per_step": None,
         "memory_arm":    getattr(a, "read_mode", None),
     }
     d.update(_sp_fingerprint(getattr(a, "system_prompt", "")))
@@ -270,6 +273,7 @@ class LunaAdapter(StepAgentAdapter):
                  temperature: float = TEMPERATURE, top_p: float = 0.9,
                  max_trajectory_length: int = HISTORY_STEPS,
                  reasoning_effort: Optional[str] = REASONING_EFFORT,
+                 one_call_per_step: bool = False,
                  client_password: str = "password", **kwargs):
         super().__init__(env, model=model, **kwargs)
         from mm_agents.agent import PromptAgent
@@ -287,6 +291,18 @@ class LunaAdapter(StepAgentAdapter):
             max_trajectory_length=max_trajectory_length, client_password=client_password)
         # PromptAgent 시그니처를 건드리지 않고 속성으로 넘긴다(extra_user_text 와 같은 방식).
         self._a.reasoning_effort = reasoning_effort
+        self.one_call_per_step = bool(one_call_per_step)
+        if self.one_call_per_step:
+            # ★ stock 프롬프트가 **배치를 권장**한다. 실행기에서만 잘라내면 모델은 계속
+            #   여러 줄을 뱉고 매 턴 교정 메시지를 받아 스텝을 낭비한다. 지시도 같이 바꾼다.
+            _old = ("Return one line or multiple lines of python code to perform the "
+                    "action each time, be time efficient.")
+            _new = "Return exactly ONE pyautogui call per response."
+            if _old in self._a.system_message:
+                self._a.system_message = self._a.system_message.replace(_old, _new, 1)
+            else:
+                logger.warning("stock 프롬프트의 배치 권장 문구를 못 찾았다 — "
+                               "문구가 바뀐 것인지 확인할 것 (one_call_per_step)")
 
     def attach_user_text(self, text: str) -> None:
         # 매 스텝 덮어쓴다 — 빈 문자열이면 지워져서 지난 결과가 남지 않는다.
@@ -341,10 +357,34 @@ class LunaAdapter(StepAgentAdapter):
             "reasoning_effort": _eff,
             "reasoning_elicitation": "forced_reason_line",   # '## Reason:' 강제 패치
             "tool_channel":  "user_turn",
+            "one_call_per_step": getattr(self, "one_call_per_step", None),
             "memory_arm":    (self.emu.memory_arm if getattr(self, "emu", None) else None),
         }
         d.update(_sp_fingerprint(getattr(a, "system_message", "")))
+        if getattr(self, "emu", None):
+            d.update(self.emu.prompt_fingerprint())
         return d
+
+
+def kimi_effective_history(declared):
+    """Kimi 가 **실제로** 받는 스크린샷 수를 선언값에서 계산한다.
+
+    벤더 kimi_agent.py:341 의 조건이 엄격 부등호다:
+
+        if i > len(self.actions) - self.max_image_history_length:
+
+    그래서 에피소드가 선언값보다 길어지면 붙는 이미지는 항상 `declared - 1` 장이다.
+    Claude 의 _trim_images(agent_mcp.py:496)는 정확히 only_n_recent_images 장을 남기고,
+    Luna 의 observations[-max_trajectory_length:] 도 정확히 그 수를 남긴다.
+
+    즉 선언값을 그대로 지문에 적으면 Kimi 만 한 장 적게 보면서 "같다"고 기록된다.
+    history_steps 는 MUST_MATCH 축이므로 이건 조용한 불일치다. 어댑터는 +1 을 줘서
+    실효값을 맞추고, 지문은 이 함수로 실효값을 적는다. **테스트도 같은 함수를 쓴다**
+    (compare_conditions.known_axes() 와 같은 이유 — 출처가 둘이면 조용히 어긋난다).
+    """
+    if isinstance(declared, bool) or not isinstance(declared, int):
+        return declared
+    return declared - 1 if declared > 0 else declared
 
 
 class KimiAdapter(StepAgentAdapter):
@@ -359,11 +399,20 @@ class KimiAdapter(StepAgentAdapter):
     name = "KimiAgent(text)"
     tag = "kimi"
 
+    # ★ 벤더 off-by-one (실측). kimi_agent.py:341 의 조건은
+    #     `if i > len(self.actions) - self.max_image_history_length:`
+    #   로 **엄격 부등호**라, 6 을 주면 실제로 붙는 이미지는 5장이다.
+    #   Claude 의 _trim_images 는 정확히 6장을 남기고, Luna 의 [-6:] 도 6장이다.
+    #   즉 6 을 그대로 주면 조건 지문은 6 이라고 적는데 Kimi 만 5장을 본다 —
+    #   history_steps 는 MUST_MATCH 축이므로 이건 조용한 불일치다.
+    #   벤더 코드는 건드리지 않고 **+1 을 줘서 실효값을 6 으로 맞춘다.**
+    #   (1~5 스텝 구간에서는 세 모델 모두 전부 보므로 차이가 없다. 검증 완료.)
+    #   conditions() 는 선언값이 아니라 **실효값(선언값-1)** 을 적는다.
     def __init__(self, env, *, model: str, max_steps: int = 30,
-                 max_image_history_length: int = HISTORY_STEPS,
+                 max_image_history_length: int = HISTORY_STEPS + 1,
                  coordinate_type: str = "relative",
                  max_tokens: int = MAX_TOKENS, top_p: float = KIMI_TOP_P,
-                 temperature: float = TEMPERATURE,
+                 temperature: float = TEMPERATURE, one_call_per_step: bool = False,
                  thinking: bool = True, password: str = "password", **kwargs):
         super().__init__(env, model=model, **kwargs)
         from mm_agents.kimi.kimi_agent import KimiAgent
@@ -377,6 +426,7 @@ class KimiAdapter(StepAgentAdapter):
                          int(getattr(env, "screen_height", 1080) or 1080)),
             password=password, thinking=thinking)
         self._thinking = bool(thinking)
+        self.one_call_per_step = bool(one_call_per_step)
         if not self._thinking:
             self._disable_native_reasoning()
 
@@ -453,7 +503,10 @@ class KimiAdapter(StepAgentAdapter):
     def conditions(self) -> Dict[str, Any]:
         a = self._a
         d = {
-            "history_steps": getattr(a, "max_image_history_length", None),
+            # 선언값이 아니라 실효값. kimi_effective_history() 주석 참조 —
+            # 지문은 "무엇을 줬나" 가 아니라 "모델이 실제로 무엇을 봤나" 를 적는다.
+            "history_steps": kimi_effective_history(
+                getattr(a, "max_image_history_length", None)),
             "history_unit":  "screenshots",
             "max_tokens":    getattr(a, "max_tokens", None),
             "temperature":   getattr(a, "temperature", None),
@@ -467,10 +520,13 @@ class KimiAdapter(StepAgentAdapter):
             "native_reasoning_chars": getattr(self, "_reasoning_chars", 0),
             "reasoning_elicitation": "native",       # ◁think▷ / reasoning_content
             "tool_channel":  "instruction_prefix",
+            "one_call_per_step": getattr(self, "one_call_per_step", None),
             "memory_arm":    (self.emu.memory_arm if getattr(self, "emu", None) else None),
             "coordinate_type": getattr(a, "coordinate_type", None),
         }
         d.update(_sp_fingerprint(getattr(a, "system_prompt", "")))
+        if getattr(self, "emu", None):
+            d.update(self.emu.prompt_fingerprint())
         return d
 
 

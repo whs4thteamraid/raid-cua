@@ -196,14 +196,61 @@ class TestContextLengthIsAligned(unittest.TestCase):
       가를 수 없다. Haiku 기준(6)으로 맞췄고, 누가 한쪽만 바꾸면 여기서 걸린다.
     """
 
-    def test_all_three_share_one_constant(self):
+    # 벤더가 이미지를 몇 장 붙이는지, **각자의 코드에 있는 식을 그대로** 옮긴다.
+    #   선언값 비교는 약하다 — 예전 이 테스트가 선언값만 봐서, Kimi 가 6 을 선언하고
+    #   5 장만 받는 off-by-one 을 놓쳤다(지문에는 6 이라고 적히고 있었다).
+    #   식을 옮겨두면 다음에 벤더가 조건을 바꿔도 여기서 걸린다.
+    @staticmethod
+    def _images_seen(kind: str, declared: int, steps: int) -> int:
+        if kind == "kimi":      # kimi_agent.py:341  if i > len(actions) - m
+            return len([i for i in range(steps) if i > steps - declared])
+        if kind == "luna":      # agent.py:324  observations[-m:]
+            return min(steps, declared)
+        if kind == "claude":    # agent_mcp.py:496  excess = len(images) - m
+            return min(steps, declared)
+        raise ValueError(kind)
+
+    def test_all_three_see_the_same_number_of_screenshots(self):
+        """선언값이 아니라 **실제로 붙는 장수**가 같아야 한다."""
         from mm_agents.adapters import agents as A
         import inspect
         self.assertEqual(A.HISTORY_STEPS, 6)
-        luna = inspect.signature(A.LunaAdapter.__init__).parameters["max_trajectory_length"]
-        kimi = inspect.signature(A.KimiAdapter.__init__).parameters["max_image_history_length"]
-        self.assertEqual(luna.default, A.HISTORY_STEPS, "Luna 문맥 길이가 상수에서 떨어졌다")
-        self.assertEqual(kimi.default, A.HISTORY_STEPS, "Kimi 문맥 길이가 상수에서 떨어졌다")
+        luna = inspect.signature(
+            A.LunaAdapter.__init__).parameters["max_trajectory_length"].default
+        kimi = inspect.signature(
+            A.KimiAdapter.__init__).parameters["max_image_history_length"].default
+        claude = inspect.signature(runner.Session.__init__).parameters["only_n"].default
+
+        for steps in (1, 2, 5, 6, 7, 13, 21, 40, 60):
+            c = self._images_seen("claude", claude, steps)
+            l = self._images_seen("luna", luna, steps)
+            k = self._images_seen("kimi", kimi, steps)
+            self.assertEqual((c, l, k), (c, c, c),
+                             f"{steps}스텝에서 붙는 스크린샷 수가 다르다 "
+                             f"(claude={c} luna={l} kimi={k})")
+            self.assertEqual(c, min(steps, A.HISTORY_STEPS),
+                             f"{steps}스텝에서 기준선(HISTORY_STEPS)과도 다르다")
+
+    def test_kimi_declares_one_more_than_it_gets(self):
+        """+1 보정과 지문의 실효값 환산이 같은 출처를 쓰는지."""
+        from mm_agents.adapters import agents as A
+        import inspect
+        declared = inspect.signature(
+            A.KimiAdapter.__init__).parameters["max_image_history_length"].default
+        self.assertEqual(declared, A.HISTORY_STEPS + 1,
+                         "Kimi 는 벤더 off-by-one 때문에 +1 을 선언해야 한다")
+        self.assertEqual(A.kimi_effective_history(declared), A.HISTORY_STEPS,
+                         "지문에 적히는 실효값이 기준선과 다르다")
+        # 긴 에피소드에서 실효값이 정말 그 수인지 식으로도 확인
+        self.assertEqual(self._images_seen("kimi", declared, 40),
+                         A.kimi_effective_history(declared))
+
+    def test_luna_context_is_tied_to_the_constant(self):
+        from mm_agents.adapters import agents as A
+        import inspect
+        luna = inspect.signature(
+            A.LunaAdapter.__init__).parameters["max_trajectory_length"].default
+        self.assertEqual(luna, A.HISTORY_STEPS, "Luna 문맥 길이가 상수에서 떨어졌다")
 
     def test_claude_runner_default_matches(self):
         """실행기의 only_n(= Haiku 유지 스크린샷 수) 도 같은 값이어야 한다."""

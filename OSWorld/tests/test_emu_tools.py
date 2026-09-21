@@ -64,6 +64,37 @@ class TestExplicitToolCalls(unittest.TestCase):
         self.assertEqual(rec.calls, ["echo hi", "echo hi2"])
         self.assertEqual(layer.counters.syntax_errors, 0)
 
+    def test_bash_result_always_carries_completion_status(self):
+        """실측(Kimi): `$ git clone ...` + `Cloning into ...` 로 끝난 결과를 보고
+        "아직 받는 중" 으로 읽어 sleep(0.5) 을 7스텝 반복했다. 종료 신호가 없어서다.
+        claude_cua 의 native bash 는 tool_result 블록 자체가 완료 신호다 —
+        텍스트 채널에는 그 프레임이 없으니 상태 줄로 정보량을 맞춘다."""
+        layer, _ = make_layer(self.tmp)
+        # Recorder 는 마커를 안 붙인다 → rc 는 몰라도 완료는 확실하다
+        text = layer.execute("tool", 'bash.run(command="echo hi")').text
+        self.assertTrue(text.endswith("[command finished]"), text)
+
+        # make_vm_exec 가 붙이는 __RC= 마커는 rc 로 번역되고 본문에서 사라진다
+        for raw, tail in (("done\n__RC=0__\n", "[exit 0]"),
+                          ("boom\n__RC=128__\n", "[exit 128]"),
+                          ("part\n__RC=124__\n", "[timed out after 60s]")):
+            layer._vm_exec = lambda _c, _t=60, _r=raw: _r
+            text = layer.execute("tool", 'bash.run(command="x")').text
+            self.assertTrue(text.endswith(tail), text)
+            self.assertNotIn("__RC=", text)
+
+        # 출력이 비어도 "돌아왔다" 는 것은 보인다
+        layer._vm_exec = lambda _c, _t=60: "\n__RC=0__\n"
+        self.assertIn("(no output)", layer.execute("tool", 'bash.run(command="x")').text)
+
+    def test_split_rc_takes_the_last_marker(self):
+        """본문이 __RC= 를 그대로 출력해도(echo 등) 진짜 꼬리만 집는다."""
+        from mm_agents.base.emu_tools import _split_rc
+        self.assertEqual(_split_rc("plain"), ("plain", None))
+        self.assertEqual(_split_rc("echo __RC=9__ fake\n__RC=0__\n"),
+                         ("echo __RC=9__ fake", 0))
+        self.assertEqual(_split_rc("x\n__RC=nope__"), ("x\n__RC=nope__", None))
+
     def test_memory_roundtrip_and_counters(self):
         layer, _ = make_layer(self.tmp)
         run(layer, 'memory.create(path="/memories/n.md", file_text="hello")')
