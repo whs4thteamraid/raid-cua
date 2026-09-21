@@ -24,10 +24,8 @@ MUST_MATCH = [
     "history_steps",
     "max_tokens",
     "temperature",
-    "top_p",
     "image_sent_wh",
     "thinking",
-    "memory_arm",
     "max_steps",
     "measured.calls_per_step",
 ]
@@ -42,7 +40,25 @@ STRUCTURAL_RESIDUE = [
     "system_prompt_sha256",    # 벤더별 프롬프트 계보 (Haiku 우리 것 / Luna stock / Kimi 벤더)
     "system_prompt_len",
     "coordinate_type",         # Kimi 만 가짐 (상대좌표)
+    # ★ memory_arm 은 '맞출 수 있는 축'이 아니다 (결정됨).
+    #   faithful 은 Anthropic 서버의 auto-view 프로토콜이라 haiku 에만 존재하고,
+    #   Luna·Kimi 에 대응물을 두지 않기로 했다. 즉 phase1 에서 세 모델이 같은 팔
+    #   문자열이 되는 경우가 구조적으로 없다. MUST_MATCH 에 두면 영영 지워지지 않는
+    #   ✗ 가 하나 붙박이로 남아 "남은 ✗ = 할 일" 이라는 신호가 흐려진다.
+    #   ⚠️ 단, phase2 는 세 모델이 같은 팔(ARM 인자)을 쓰므로 여기서 걸러지지 않는다.
+    #      phase2 팔이 어긋나는 사고는 이 비교기가 못 잡는다 — summary 의
+    #      conditions_phase2.memory_arm 을 따로 볼 것.
+    "memory_arm",
+    # ★ top_p 도 맞출 수 없다 — gpt-5.6 이 top_p 를 거부해서 Luna 는 payload 에서
+    #   제거된다(= 영영 None). Claude·Kimi 는 1.0(절단 없음)으로 맞춰 **동작은** 같게
+    #   해뒀지만, 기록이 같아질 수는 없다.
+    "top_p",
 ]
+
+# 비교하지 않고 눈으로만 보는 축 (측정 맥락)
+INFO = ["reasoning_effort", "kimi_thinking_flag", "native_reasoning_chars",
+        "measured.steps", "measured.gui_steps", "measured.gui_calls",
+        "measured.gui_calls_per_step"]
 
 # 실측치는 완전 일치를 요구하지 않는다 — 판마다 흔들린다.
 TOL = {"measured.calls_per_step": 0.15}
@@ -128,19 +144,33 @@ def main(paths) -> int:
         print("✗ conditions 블록이 없다 — 1단계(조건 지문)를 적용하고 판을 다시 돌릴 것.")
         return 2
 
-    w = max(26, max(dwidth(a) for a in MUST_MATCH + STRUCTURAL_RESIDUE) + 2)
+    w = max(26, max(dwidth(a) for a in MUST_MATCH + STRUCTURAL_RESIDUE + INFO) + 2)
     head = pad("축", w) + "".join(pad(n, COL) for n in names)
     print(head)
     print("─" * dwidth(head))
 
+    # ★ GUI 를 한 번도 안 쓴 판에서는 calls_per_step 이 행동 예산을 재지 못한다.
+    #   (실측) 스모크 phase1 은 bash/memory 만 쓰므로 세 모델 다 1.0 이 나오고, 그대로
+    #   ✓ 를 찍으면 "행동 예산 정렬됨" 으로 오독된다. 그럴 땐 판정을 보류한다.
+    gui_seen = any((dig(c, "measured.gui_calls") or 0) > 0 for c in conds)
+
     fails = []
     for axis in MUST_MATCH:
         vals = [dig(c, axis) for c in conds]
+        if axis == "measured.calls_per_step" and not gui_seen:
+            print(pad(axis, w) + "".join(pad(fmt(v)[:COL - 1], COL) for v in vals)
+                  + "–  GUI 미사용 — 이 판으로는 행동 예산을 못 잰다")
+            continue
         ok = same(vals, axis)
         if not ok:
             fails.append(axis)
         print(pad(axis, w) + "".join(pad(fmt(v)[:COL - 1], COL) for v in vals)
               + ("✓" if ok else "✗"))
+
+    print("─" * dwidth(head) + "  참고 (비교 안 함)")
+    for axis in INFO:
+        vals = [dig(c, axis) for c in conds]
+        print(pad(axis, w) + "".join(pad(fmt(v)[:COL - 1], COL) for v in vals) + "·")
 
     print("─" * dwidth(head) + "  구조적 잔차 (달라도 됨)")
     for axis in STRUCTURAL_RESIDUE:
@@ -148,11 +178,20 @@ def main(paths) -> int:
         print(pad(axis, w) + "".join(pad(fmt(v)[:COL - 1], COL) for v in vals) + "~")
 
     # ★ 목록에 없는 축이 나타나면 알린다 — 목록을 닫아두기 위한 장치.
-    known = set(MUST_MATCH) | set(STRUCTURAL_RESIDUE) | {"measured", "error"}
+    known = (set(MUST_MATCH) | set(STRUCTURAL_RESIDUE) | set(INFO)
+             | {"measured", "error"})
     unknown = sorted({k for c in conds for k in c} - known)
     if unknown:
         print(f"\n⚠ 목록에 없는 축: {', '.join(unknown)}")
         print("  MUST_MATCH 인지 STRUCTURAL_RESIDUE 인지 정해서 이 파일에 넣을 것.")
+
+    # ★ 플래그와 실측이 어긋나면 잡는다 — "껐다고 적혀 있는데 실제로는 추론했다" 를
+    #   놓치면 거짓 ✓ 가 만들어진다. 실제로 Kimi 가 정확히 그 상태였다.
+    for name, c in zip(names, conds):
+        rc = c.get("native_reasoning_chars")
+        if c.get("thinking") is False and isinstance(rc, int) and rc > 0:
+            print(f"\n⚠ {name}: thinking=False 인데 네이티브 추론이 {rc}자 관측됐다 "
+                  f"— 실제로는 안 꺼진 것이다.")
 
     errs = [c["error"] for c in conds if c.get("error")]
     for e in errs:

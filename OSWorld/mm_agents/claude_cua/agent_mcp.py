@@ -71,6 +71,9 @@ class MCPClaudeCUAAgent:
         model: str = "claude-sonnet-5",
         tools: Tuple[str, ...] = ("computer", "bash"),
         max_tokens: int = 4096,
+        # ★ 명시적으로 보낸다. Anthropic 기본값이 이미 1.0 이라 동작은 안 바뀌지만,
+        #   안 보내면 조건 지문에 None 으로 남아 다른 모델과 나란히 못 놓는다.
+        temperature: float = 1.0,
         send_width: int = 1280,
         only_n_recent_images: int = 6,
         action_pause: float = 1.0,
@@ -96,6 +99,7 @@ class MCPClaudeCUAAgent:
             tool for tool in ("bash", "editor") if tool in tools
         ]
         self.max_tokens = max_tokens
+        self.temperature = temperature
         self.only_n_recent_images = only_n_recent_images
         self.action_pause = action_pause
         self.verbose = verbose
@@ -743,6 +747,7 @@ class MCPClaudeCUAAgent:
             response = self.client.beta.messages.create(
                 model=self.model,
                 max_tokens=self.max_tokens,
+                temperature=self.temperature,
                 system=[
                     {
                         "type": "text",

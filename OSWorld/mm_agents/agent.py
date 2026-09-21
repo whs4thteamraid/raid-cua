@@ -635,6 +635,14 @@ class PromptAgent:
             if "max_tokens" in payload:
                 payload["max_completion_tokens"] = payload.pop("max_tokens")
             payload.pop("top_p", None)
+            # ★ 추론량 고정 (실측) — 지정하지 않으면 같은 요청에서도 reasoning_tokens 가
+            #   9 / 0 으로 흔들린다. 즉 "API 기본값"은 고정값이 아니라 판마다 달라지는
+            #   변수이고, 그대로 두면 그 분산이 결과에 섞인다.
+            #   gpt-5.6 지원값: none / low / medium / high / xhigh ('minimal' 은 거부됨).
+            #   속성이 없으면(=stock 경로) 아무것도 넣지 않아 기존 동작 그대로다.
+            _effort = getattr(self, "reasoning_effort", None)
+            if _effort:
+                payload["reasoning_effort"] = _effort
             # Support custom OpenAI base URL via environment variable
             base_url = os.environ.get('OPENAI_BASE_URL', 'https://api.openai.com')
             # Smart handling: avoid duplicate /v1 if base_url already ends with /v1

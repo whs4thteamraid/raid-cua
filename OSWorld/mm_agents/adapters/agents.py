@@ -78,6 +78,34 @@ def claude_conditions(a: Any) -> Dict[str, Any]:
 #   아니며, 비교를 보고할 때 이 한계를 함께 적을 것.
 HISTORY_STEPS = 6
 
+# ── 출력 예산 ────────────────────────────────────────────────────────────────
+# ★ 왜 6000 (위로 맞춤) — Haiku 4096(claude_cua 기본) / Luna 6000 / Kimi 4096(벤더 기본)
+#   이었다. Kimi 는 thinking 을 켜면 추론과 본문이 **같은 예산**을 나눠 쓰므로 4096 으로
+#   내려 맞추면 Kimi 만 실질 출력이 쪼들린다. 위로 맞추면 어느 모델도 불리해지지 않는다.
+MAX_TOKENS = 6000
+
+# ── 샘플링 ──────────────────────────────────────────────────────────────────
+# ★ temperature 0.6 — 세 모델 공통. 왜 1.0 이 아니라 0.6 인가 (실측):
+#     Kimi 는 추론을 끄면(thinking={"type":"disabled"}) **0.6 만 허용**한다
+#     (`invalid temperature: only 0.6 is allowed for this model`).
+#     Claude 는 0~1 아무 값, Luna(gpt-5.6)는 0.6 수락 확인됨(probe_luna_temperature).
+#   그래서 0.6 으로 내려야 thinking 과 temperature 를 **동시에** 맞출 수 있다.
+#   1.0 을 고집하면 Kimi 만 추론이 켜진 채로 남는다.
+TEMPERATURE = 0.6
+# ★ top_p 는 **맞출 수 없다.** 세 모델이 서로 다른 이유로 막혀 있다.
+#     Haiku : messages.create 에 안 보낸다(=기본 1.0)
+#     Luna  : gpt-5.6 이 top_p 를 거부 → gpt 분기가 payload 에서 제거
+#     Kimi  : Moonshot hosted 가 **0.95 만 허용** (실측: 1.0 을 보내면
+#             `invalid top_p: only 0.95 is allowed for this model` 400 으로 전 스텝 실패)
+#   한때 1.0 으로 통일하려 했다가 Kimi 판을 통째로 날렸다. 벤더가 강제하는 값이므로
+#   건드리지 않고, 비교기에서 구조적 잔차로 둔다.
+KIMI_TOP_P = 0.95
+
+# ★ Luna 의 확장 추론. gpt-5.6 은 reasoning_effort 를 받고 'none' 이 추론을 0 으로 만든다
+#   (실측: none=0 / high=9 토큰). Haiku(파라미터 미전송)·Kimi(thinking=False) 와 같은
+#   기준선에 세우기 위해 'none' 으로 고정한다. 켜려면 high/xhigh.
+REASONING_EFFORT = "none"
+
 # ── 모델 표 ──────────────────────────────────────────────────────────────────
 MODEL_SPECS: Dict[str, Dict[str, Any]] = {
     "haiku": {
@@ -238,9 +266,10 @@ class LunaAdapter(StepAgentAdapter):
     # PromptAgent 는 instruction 을 시스템 메시지로 넣는다 → 도구 결과는 따로 전달.
     results_to_user_turn = True
 
-    def __init__(self, env, *, model: str, max_tokens: int = 6000,
-                 temperature: float = 1.0, top_p: float = 0.9,
+    def __init__(self, env, *, model: str, max_tokens: int = MAX_TOKENS,
+                 temperature: float = TEMPERATURE, top_p: float = 0.9,
                  max_trajectory_length: int = HISTORY_STEPS,
+                 reasoning_effort: Optional[str] = REASONING_EFFORT,
                  client_password: str = "password", **kwargs):
         super().__init__(env, model=model, **kwargs)
         from mm_agents.agent import PromptAgent
@@ -256,6 +285,8 @@ class LunaAdapter(StepAgentAdapter):
             top_p=top_p, temperature=temperature,
             action_space="pyautogui", observation_type="screenshot",
             max_trajectory_length=max_trajectory_length, client_password=client_password)
+        # PromptAgent 시그니처를 건드리지 않고 속성으로 넘긴다(extra_user_text 와 같은 방식).
+        self._a.reasoning_effort = reasoning_effort
 
     def attach_user_text(self, text: str) -> None:
         # 매 스텝 덮어쓴다 — 빈 문자열이면 지워져서 지난 결과가 남지 않는다.
@@ -288,6 +319,7 @@ class LunaAdapter(StepAgentAdapter):
 
     def conditions(self) -> Dict[str, Any]:
         a = self._a
+        _eff = getattr(a, "reasoning_effort", None)
         d = {
             "history_steps": getattr(a, "max_trajectory_length", None),
             # ★ 단위가 Haiku/Kimi 와 다르다 — 스크린샷 수가 아니라 (스샷+액션+생각) 묶음 수.
@@ -297,9 +329,16 @@ class LunaAdapter(StepAgentAdapter):
             # gpt 분기가 payload 에서 top_p 를 제거하므로 실제로는 전송되지 않는다.
             "top_p":         None,
             "image_sent_wh": getattr(self, "_image_wh", None),
-            # gpt-5.6 은 추론 모델이지만 reasoning_effort 를 지정하지 않는다 → API 기본값.
-            # 켜고 끄는 스위치가 없어 None 으로 남긴다(구조적 잔차).
-            "thinking":      None,
+            # ★ thinking 은 "확장 추론이 꺼져 있나" 라는 **공통 의미**로 맞춘다.
+            #   Haiku=파라미터 미전송 / Kimi=thinking False / Luna=reasoning_effort "none".
+            #   셋 다 '확장 추론 없음' 이므로 False 로 보고하고, 원본 값은 따로 남긴다.
+            # ★ thinking 은 "확장 추론이 꺼져 있나" 라는 **공통 의미**로 맞춘다.
+            #   Haiku=파라미터 미전송 / Kimi=thinking False / Luna=reasoning_effort "none".
+            #   ★ 미지정(None)은 False 가 아니라 **None** 이다 — "꺼짐"이 아니라
+            #     "통제 안 됨"이고, 실측상 같은 요청에서도 추론 토큰이 9/0 으로 흔들린다.
+            #     이걸 False 로 찍으면 통제되지 않은 조건을 정렬됐다고 오독하게 된다.
+            "thinking":      (None if _eff is None else str(_eff).lower() != "none"),
+            "reasoning_effort": _eff,
             "reasoning_elicitation": "forced_reason_line",   # '## Reason:' 강제 패치
             "tool_channel":  "user_turn",
             "memory_arm":    (self.emu.memory_arm if getattr(self, "emu", None) else None),
@@ -323,6 +362,8 @@ class KimiAdapter(StepAgentAdapter):
     def __init__(self, env, *, model: str, max_steps: int = 30,
                  max_image_history_length: int = HISTORY_STEPS,
                  coordinate_type: str = "relative",
+                 max_tokens: int = MAX_TOKENS, top_p: float = KIMI_TOP_P,
+                 temperature: float = TEMPERATURE,
                  thinking: bool = True, password: str = "password", **kwargs):
         super().__init__(env, model=model, **kwargs)
         from mm_agents.kimi.kimi_agent import KimiAgent
@@ -331,9 +372,35 @@ class KimiAdapter(StepAgentAdapter):
             max_image_history_length=max_image_history_length, platform="ubuntu",
             action_space="pyautogui", observation_type="screenshot",
             coordinate_type=coordinate_type,
+            max_tokens=max_tokens, top_p=top_p, temperature=temperature,
             screen_size=(int(getattr(env, "screen_width", 1920) or 1920),
                          int(getattr(env, "screen_height", 1080) or 1080)),
             password=password, thinking=thinking)
+        self._thinking = bool(thinking)
+        if not self._thinking:
+            self._disable_native_reasoning()
+
+    def _disable_native_reasoning(self) -> None:
+        """payload 에 thinking={"type":"disabled"} 를 끼워 넣는다 (벤더 파일 무수정).
+
+        ★ 왜 필요한가 (실측) — KimiAgent 의 `thinking` 인자는 **시스템 프롬프트와 파서만**
+          바꾼다. payload 에 추론 제어 파라미터가 없어서, thinking=False 로 둬도 API 는
+          reasoning_content 를 계속 채워 보냈다(스모크 실측 1914자). 그 상태로 "추론 껐다"
+          고 기록하면 거짓 정렬이 된다.
+        ★ 무엇이 진짜 끄는가 (probe_kimi_thinking) —
+            thinking={"type":"disabled"}  → reasoning_content 0자
+            reasoning_effort="none"       → reasoning_content 0자
+          둘 다 temperature 0.6 을 요구한다. 앞의 것은 API 가 스키마를 명시적으로
+          검증하므로(bool 을 보내면 "expected type object") 이쪽을 쓴다.
+        """
+        _orig = self._a.call_llm
+
+        def _call(payload, model, _o=_orig):
+            p = dict(payload)
+            p["thinking"] = {"type": "disabled"}
+            return _o(p, model)
+
+        self._a.call_llm = _call
 
     def reset(self) -> None:
         self._a.reset(_logger=logger)
@@ -341,7 +408,21 @@ class KimiAdapter(StepAgentAdapter):
     def predict(self, instruction: str, obs: Dict[str, Any]) -> StepOutput:
         self._sync_screen_size(obs)
         response, actions, cot = self._a.predict(instruction, obs)
+        self._note_reasoning(response)
         return StepOutput(self._as_text(response), list(actions or []), dict(cot or {}))
+
+    def _note_reasoning(self, response: Any) -> None:
+        """모델이 **실제로** 네이티브 추론을 했는지 잰다.
+
+        ★ 왜 플래그를 믿으면 안 되는가 (실측) — KimiAgent 의 `thinking` 인자는
+          시스템 프롬프트와 파서만 바꾼다. payload 에는 추론 제어 파라미터가 없고,
+          thinking=False 로 둬도 API 는 reasoning_content 를 계속 채워 보낸다
+          (실측: ON 2819자 / OFF 1914자 — 줄기만 하고 0 이 아니다).
+          플래그를 thinking 축에 그대로 쓰면 '추론 껐다'는 거짓 ✓ 가 만들어진다.
+        """
+        if isinstance(response, dict):
+            self._reasoning_chars = (getattr(self, "_reasoning_chars", 0)
+                                     + len(str(response.get("reasoning_content") or "")))
 
     @staticmethod
     def _as_text(response: Any) -> str:
@@ -379,7 +460,11 @@ class KimiAdapter(StepAgentAdapter):
             # ★ 세 모델 중 top_p 가 실제로 걸리는 것은 Kimi 뿐이다(벤더 기본 0.95).
             "top_p":         getattr(a, "top_p", None),
             "image_sent_wh": getattr(self, "_image_wh", None),
-            "thinking":      getattr(a, "thinking", None),
+            # thinking=False 면 payload 에 thinking={"type":"disabled"} 가 들어가
+            # 네이티브 추론이 **실제로** 0 이 된다. 그 검증은 native_reasoning_chars.
+            "thinking":      getattr(self, "_thinking", None),
+            "kimi_thinking_flag": getattr(a, "thinking", None),
+            "native_reasoning_chars": getattr(self, "_reasoning_chars", 0),
             "reasoning_elicitation": "native",       # ◁think▷ / reasoning_content
             "tool_channel":  "instruction_prefix",
             "memory_arm":    (self.emu.memory_arm if getattr(self, "emu", None) else None),

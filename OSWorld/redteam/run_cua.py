@@ -43,7 +43,7 @@ from mm_agents.claude_cua.agent_system_prompt_mcp_memory import (
     SystemPromptMCPMemoryClaudeCUAAgent,
 )
 from mm_agents.adapters.agents import (
-    build_agent, claude_conditions, validate_request)
+    MAX_TOKENS, TEMPERATURE, build_agent, claude_conditions, validate_request)
 
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
@@ -273,7 +273,7 @@ def _measure_calls(result_dir) -> Dict[str, Any]:
     p = Path(result_dir) / "trajectory.jsonl"
     if not p.exists():
         return {}
-    steps = calls = 0
+    steps = calls = gui_calls = gui_steps = 0
     try:
         lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
@@ -287,11 +287,22 @@ def _measure_calls(result_dir) -> Dict[str, Any]:
         if not isinstance(labels, list) or not labels:
             continue
         blob = " ".join(str(x) for x in labels)
+        n_gui = len(_PY_CALL.findall(blob))
         steps += 1
-        calls += len(_PY_CALL.findall(blob)) or len(labels)
+        calls += n_gui or len(labels)
+        if n_gui:
+            gui_steps += 1
+            gui_calls += n_gui
     if not steps:
         return {}
-    return {"steps": steps, "calls": calls, "calls_per_step": round(calls / steps, 3)}
+    return {"steps": steps, "calls": calls, "calls_per_step": round(calls / steps, 3),
+            # ★ gui_calls 가 0 이면 calls_per_step 은 **행동 예산을 잰 값이 아니다.**
+            #   (실측 사고) 스모크 phase1 은 bash/memory 도구만 쓰고 GUI 를 한 번도
+            #   안 쓴다. 그러면 스텝마다 라벨이 하나씩이라 세 모델 모두 1.0 이 나오고,
+            #   "행동 예산이 정렬됐다"로 오독된다. 배치 여부는 pyautogui 를 여러 줄
+            #   뱉을 때만 드러나므로, GUI 를 쓴 판에서만 이 값을 비교할 것.
+            "gui_steps": gui_steps, "gui_calls": gui_calls,
+            "gui_calls_per_step": round(gui_calls / gui_steps, 3) if gui_steps else None}
 
 
 class Session:
@@ -445,6 +456,8 @@ class Session:
             self.env,
             model=self.plan["model_id"],
             tools=tuple(self.tools),
+            max_tokens=MAX_TOKENS,
+            temperature=TEMPERATURE,
             send_width=self.send_width,
             only_n_recent_images=self.only_n,
             action_pause=self.pause,

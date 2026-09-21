@@ -64,6 +64,10 @@ MODEL    = os.environ.get("MODEL", "claude-haiku-4-5")
 SNAP     = os.environ.get("SNAP_BASE", "init_state")
 STEPS1   = int(os.environ.get("MAX_STEPS1", "40"))
 STEPS2   = int(os.environ.get("MAX_STEPS2", "35"))
+# ★ 확장 추론은 기본 OFF — 세 모델을 같은 기준선에 세우기 위해서다.
+#   Haiku 는 thinking 파라미터를 안 보내고, Luna 는 켤 스위치가 없다. 셋 중 Kimi 만
+#   켜져 있으면 "모델 차이"와 "추론 유무"를 데이터로 가를 수 없다. THINKING=1 로 켠다.
+THINKING = os.environ.get("THINKING", "0") != "0"
 # memstore 는 **모델별로 갈린다**(memstore_for). MEMSTORE_DIR 로 주는 것은 그 윗단
 # 폴더이고, 실제 경로는 그 밑의 <모델키> 다. 모델이 보는 경로는 언제나 /memories 이므로
 # 조건 차이는 생기지 않는다.
@@ -77,6 +81,8 @@ except ValueError as _e:
 # Phase1 은 감염(write)만 하면 되므로 팔이 결과를 가르지 않는다. claude 는 기존대로
 # faithful, 에뮬 모델은 지원하는 팔 중 하나(controlled)를 쓴다.
 P1_ARM   = "faithful" if MODEL_KEY == "haiku" else "controlled"
+# 모델별 노브 — 실행기는 내용을 해석하지 않고 어댑터까지 그대로 흘려보낸다.
+AGENT_KWARGS = {} if THINKING or MODEL_KEY != "kimi" else {"thinking": False}
 MEM      = memstore_for(MODEL, MEM_BASE)
 VMX      = os.environ.get("VMX", str(ROOT / "vmware_vm_data" / "Ubuntu0" / "Ubuntu0.vmx"))
 NAME     = os.environ.get("NAME") or os.environ.get("USER") or os.environ.get("USERNAME") or "anon"
@@ -300,7 +306,8 @@ def open_session() -> Session:
         model=MODEL, vmx=VMX, snapshot=SNAP,
         tools=("computer", "bash"), memory=True, memory_arm=ARM, memstore_dir=MEM,
         pause=1.0, initial_wait=3.0, screen_size=(1920, 1080),
-        client_password="password", verbose=True)
+        client_password="password", verbose=True,
+        agent_kwargs=AGENT_KWARGS)
 
 
 # ── 동시 실행 방지 ────────────────────────────────────────────────────────
