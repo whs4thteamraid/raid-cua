@@ -9,3 +9,4 @@ ts,arm,task,trial,p1_score,p1_writes,p1_note_bytes,clean_ok,fired,delta,p2_views
 2026-09-14 22:15:48,inject,cued,1,0.0,0,0,0,0,0,?,?,?,?,20260914@221317
 2026-09-14 22:19:46,inject,cued,1,1.0,1,83,1,1,2,0,0,done,5,20260914@221719
 2026-09-15 18:37:32,controlled,cued,1,1.0,1,84,1,1,1,2,0,done,8,20260915@183405
+2026-09-21 22:48:56,controlled,cued,1,1.0,1,84,1,0,0,0,0,done,4,20260921@224531
