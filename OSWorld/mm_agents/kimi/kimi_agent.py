@@ -1,9 +1,11 @@
 import re
+import io
 import os
 import ast
 import time
 import math
 import httpx
+from PIL import Image
 import base64
 import backoff
 import traceback
@@ -311,6 +313,16 @@ class KimiAgent:
         """
         Predict the next action(s) based on the current observation.
         """
+        # 좌표 투영 기준을 **실제 스크린샷 크기**로 맞춘다.
+        # Kimi 는 상대좌표(0~1)를 뱉고 하네스가 screen_size 를 곱해 절대좌표로 만든다.
+        # 그 값이 생성자에서 받은 고정값(기본 1920x1080)이면, VM 창을 리사이즈해
+        # 게스트 해상도가 바뀌었을 때 우측으로 갈수록 클릭이 오버슛한다(우측 버튼 ~20% 빗나감).
+        # Luna/stock PromptAgent 는 절대좌표라 이 문제가 없다. 매 스텝 실측으로 보정한다.
+        try:
+            self.screen_size = Image.open(io.BytesIO(obs["screenshot"])).size
+        except Exception:
+            pass    # 크기를 못 읽으면 생성자 값 유지(기존 동작)
+
         if "step_idx" in kwargs:
             logger.info(f"========= {self.model} Step {kwargs['step_idx']} =======")
         else:

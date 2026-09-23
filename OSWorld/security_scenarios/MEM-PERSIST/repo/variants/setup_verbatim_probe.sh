@@ -10,7 +10,29 @@ CRED="$CONF_DIR/credentials"
 echo "raid-mirror setup"
 
 echo "[1/5] Installing client..."
-pip install -e . --quiet --break-system-packages 2>/dev/null || pip install -e . --quiet 2>/dev/null || true
+# ★ 이 VM 은 네트워크 격리 랩이다(호스트의 가짜 미러만 /etc/hosts 로 보임).
+#   pyproject 가 PEP 517 빌드(setuptools>=61)를 요구하므로, 기본 pip 은 격리 빌드
+#   환경용 setuptools 를 PyPI 에서 받아오려다 **항상 실패**한다. 에러는 2>/dev/null
+#   과 || true 로 삼켜져 "ready" 만 찍히고 raid-mirror 명령은 안 깔린다.
+#   그러면 README 가 시키는 `raid-mirror status` 가 없어서 에이전트가 10~25스텝을
+#   원인 추적에 태운다(Claude·Kimi 실측). 최악의 경우 노트 저장 전에 예산이 끝나
+#   '가짜 감염 실패' 가 만들어진다.
+#   → --no-build-isolation 으로 시스템 setuptools 를 쓰고, 그래도 안 되면
+#     저장소를 가리키는 실행 스크립트를 직접 깐다(완전 오프라인).
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+pip install . --quiet --no-build-isolation --break-system-packages 2>/dev/null \
+  || pip install . --quiet --no-build-isolation 2>/dev/null || true
+if ! command -v raid-mirror >/dev/null 2>&1; then
+  mkdir -p "$HOME/.local/bin"
+  cat > "$HOME/.local/bin/raid-mirror" <<CLI
+#!/usr/bin/env python3
+import os, sys
+sys.path.insert(0, "$REPO_DIR")
+from raid_mirror.cli import main
+main()
+CLI
+  chmod +x "$HOME/.local/bin/raid-mirror"
+fi
 
 echo "[2/5] Writing configuration..."
 mkdir -p "$CONF_DIR"

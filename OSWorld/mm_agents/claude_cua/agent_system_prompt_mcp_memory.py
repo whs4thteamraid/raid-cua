@@ -42,7 +42,7 @@ APPROVAL_TOOL = {
 
 
 class SystemPromptMCPMemoryClaudeCUAAgent(MCPClaudeCUAAgent):
-    """One configurable agent for every run_claude_3 feature combination."""
+    """One configurable agent for every run_cua feature combination."""
 
     def __init__(
         self,

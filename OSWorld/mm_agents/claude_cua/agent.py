@@ -103,6 +103,16 @@ class ClaudeCUAAgent:
 
         self.native_w = int(getattr(env, "screen_width", 1920))
         self.native_h = int(getattr(env, "screen_height", 1080))
+        # 요청 해상도와 VM 실제 프레임버퍼가 다를 수 있음(예: 1920x1080 요청 → 실제 1920x911).
+        # 그대로 두면 좌표 역스케일이 세로로 어긋나 클릭이 아래로 밀린다. 실제 스크린샷 크기로 보정.
+        try:
+            _raw = self.controller.get_screenshot()
+            if _raw:
+                _rw, _rh = Image.open(io.BytesIO(_raw)).size
+                if _rw and _rh:
+                    self.native_w, self.native_h = int(_rw), int(_rh)
+        except Exception:
+            pass
         self.disp_w = min(self.native_w, send_width)
         self.disp_h = round(self.native_h * self.disp_w / self.native_w)
 

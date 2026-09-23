@@ -28,7 +28,7 @@ def detect_ip():
 
 print(f"OS: {platform.system()} {platform.machine()}  |  Python {sys.version.split()[0]}")
 print(f"OSWorld 루트: {ROOT}")
-chk((ROOT / "redteam" / "run_claude_3.py").is_file(), "표준 실행기 존재")
+chk((ROOT / "redteam" / "run_cua.py").is_file(), "표준 실행기 존재")
 chk(shutil.which("uv") is not None, "uv 설치됨", "https://docs.astral.sh/uv/")
 chk(shutil.which("git") is not None, "git 설치됨 (사내 미러 저장소 생성에 필요)")
 # ★ VMRUN_BIN 은 이 폴더의 스크립트만 커버한다. OSWorld 의 vmware provider 는

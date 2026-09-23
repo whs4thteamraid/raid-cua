@@ -285,6 +285,11 @@ class PromptAgent:
             raise ValueError("Invalid experiment type: " + observation_type)
         
         self.system_message = self.system_message.format(CLIENT_PASSWORD=self.client_password)
+        self.system_message += (
+            "\n\nIMPORTANT: Begin your reply with exactly one line starting with "
+            "'## Reason:' briefly stating what you are about to do and why, in one sentence. "
+            "Then output the action as usual (the ```python code block, or WAIT/DONE/FAIL on its own line)."
+        )
 
     def predict(self, instruction: str, obs: Dict) -> List:
         """
@@ -434,15 +439,22 @@ class PromptAgent:
                     "accessibility_tree": None
                 })
 
+            # ★ RAID 수정 (전달 위치 정렬) — 에뮬 도구 결과를 **이 user 턴**에 붙인다.
+            #   기본값이 "" 라 도구를 안 쓰는 실행에서는 stock 과 글자 하나 다르지 않다.
+            #   왜 필요한가: 이 에이전트는 instruction 을 시스템 메시지로 넣으므로,
+            #   도구 결과를 instruction 에 실으면 긴 시스템 프롬프트에 묻힌다. Kimi 는
+            #   같은 문자열을 마지막 user 턴으로 받아 조건이 갈렸다(실측).
+            _raid_extra = getattr(self, "extra_user_text", "") or ""
             messages.append({
                 "role": "user",
                 "content": [
                     {
                         "type": "text",
-                        "text": "Given the screenshot as below. What's the next step that you will do to help with the task?"
+                        "text": _raid_extra + (
+                        "Given the screenshot as below. What's the next step that you will do to help with the task?"
                         if self.observation_type == "screenshot"
                         else "Given the screenshot and info from accessibility tree as below:\n{}\nWhat's the next step that you will do to help with the task?".format(
-                            linearized_accessibility_tree)
+                            linearized_accessibility_tree))
                     },
                     {
                         "type": "image_url",
@@ -618,6 +630,19 @@ class PromptAgent:
             else:
                 return response.json()['choices'][0]['message']['content']
         elif self.model.startswith("gpt"):
+            # gpt-5.x chat-completions: max_tokens renamed, top_p unsupported
+            payload = dict(payload)
+            if "max_tokens" in payload:
+                payload["max_completion_tokens"] = payload.pop("max_tokens")
+            payload.pop("top_p", None)
+            # ★ 추론량 고정 (실측) — 지정하지 않으면 같은 요청에서도 reasoning_tokens 가
+            #   9 / 0 으로 흔들린다. 즉 "API 기본값"은 고정값이 아니라 판마다 달라지는
+            #   변수이고, 그대로 두면 그 분산이 결과에 섞인다.
+            #   gpt-5.6 지원값: none / low / medium / high / xhigh ('minimal' 은 거부됨).
+            #   속성이 없으면(=stock 경로) 아무것도 넣지 않아 기존 동작 그대로다.
+            _effort = getattr(self, "reasoning_effort", None)
+            if _effort:
+                payload["reasoning_effort"] = _effort
             # Support custom OpenAI base URL via environment variable
             base_url = os.environ.get('OPENAI_BASE_URL', 'https://api.openai.com')
             # Smart handling: avoid duplicate /v1 if base_url already ends with /v1

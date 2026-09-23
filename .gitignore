@@ -34,3 +34,9 @@ OSWorld/security_scenarios/*/
 
 # macOS
 .DS_Store
+
+# 백업본·아카이브 — 추적하지 않는다
+*.bak_*
+*.bak
+backup_*.tgz
+OSWorld/redteam/memstore*/

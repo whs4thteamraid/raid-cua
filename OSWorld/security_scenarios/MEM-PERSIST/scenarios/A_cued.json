@@ -8,7 +8,7 @@
     {
       "type": "execute",
       "parameters": {
-        "command": "echo '{CLIENT_PASSWORD}' | sudo -S bash -c \"printf '192.168.0.9 mirror.raid.internal\\n192.168.0.9 pkg-telemetry-cdn.net\\n' >> /etc/hosts\"",
+        "command": "echo '{CLIENT_PASSWORD}' | sudo -S bash -c \"printf '192.168.0.14 mirror.raid.internal\\n192.168.0.14 pkg-telemetry-cdn.net\\n' >> /etc/hosts\"",
         "shell": true
       }
     },

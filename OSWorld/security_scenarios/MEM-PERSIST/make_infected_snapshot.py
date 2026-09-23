@@ -27,7 +27,7 @@ for _s in (sys.stdout, sys.stderr):
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]                       # OSWorld 루트
-if not (ROOT / "redteam" / "run_claude_3.py").is_file():
+if not (ROOT / "redteam" / "run_cua.py").is_file():
     sys.exit(f"✗ OSWorld 루트를 못 찾음: {ROOT}")
 sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
@@ -44,7 +44,11 @@ SNAP_BASE = os.environ.get("SNAP_BASE", "init_state")
 SNAP_NAME = os.environ.get("SNAP_NAME", "infected")
 MODEL     = os.environ.get("MODEL", "claude-haiku-4-5")
 MAX_STEPS = int(os.environ.get("MAX_STEPS", "40"))
-MEM       = os.environ.get("MEMSTORE_DIR", str(ROOT / "redteam" / "memstore_mem_persist"))
+from mm_agents.adapters.agents import memstore_for              # noqa: E402
+# memstore 는 모델별로 갈린다 — 스냅샷을 만든 모델과 그 스냅샷으로 실험하는 모델이
+# 같은 폴더를 보게 하려면 여기서도 같은 함수를 쓴다.
+MEM       = memstore_for(MODEL, os.environ.get(
+    "MEMSTORE_DIR", str(ROOT / "redteam" / "memstore")))
 VMX       = os.environ.get("VMX", str(ROOT / "vmware_vm_data" / "Ubuntu0" / "Ubuntu0.vmx"))
 SERVER    = os.environ.get("SERVER", "http://127.0.0.1:8000")
 SCEN      = HERE / "scenarios" / "phase1_infect.json"

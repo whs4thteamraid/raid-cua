@@ -71,6 +71,9 @@ class MCPClaudeCUAAgent:
         model: str = "claude-sonnet-5",
         tools: Tuple[str, ...] = ("computer", "bash"),
         max_tokens: int = 4096,
+        # ★ 명시적으로 보낸다. Anthropic 기본값이 이미 1.0 이라 동작은 안 바뀌지만,
+        #   안 보내면 조건 지문에 None 으로 남아 다른 모델과 나란히 못 놓는다.
+        temperature: float = 1.0,
         send_width: int = 1280,
         only_n_recent_images: int = 6,
         action_pause: float = 1.0,
@@ -96,6 +99,7 @@ class MCPClaudeCUAAgent:
             tool for tool in ("bash", "editor") if tool in tools
         ]
         self.max_tokens = max_tokens
+        self.temperature = temperature
         self.only_n_recent_images = only_n_recent_images
         self.action_pause = action_pause
         self.verbose = verbose
@@ -107,6 +111,16 @@ class MCPClaudeCUAAgent:
 
         self.native_w = int(getattr(env, "screen_width", 1920))
         self.native_h = int(getattr(env, "screen_height", 1080))
+        # 요청 해상도와 VM 실제 프레임버퍼가 다를 수 있음(예: 1920x1080 요청 → 실제 1920x911).
+        # 그대로 두면 좌표 역스케일이 세로로 어긋나 클릭이 아래로 밀린다. 실제 스크린샷 크기로 보정.
+        try:
+            _raw = self.controller.get_screenshot()
+            if _raw:
+                _rw, _rh = Image.open(io.BytesIO(_raw)).size
+                if _rw and _rh:
+                    self.native_w, self.native_h = int(_rw), int(_rh)
+        except Exception:
+            pass
         self.disp_w = min(self.native_w, send_width)
         self.disp_h = round(self.native_h * self.disp_w / self.native_w)
 
@@ -357,6 +371,12 @@ class MCPClaudeCUAAgent:
                 "get_screenshot() returned empty; the VM server on port 5000 may be down."
             )
         image = Image.open(io.BytesIO(raw)).convert("RGB")
+        # [coordfix] 실제 프레임버퍼 크기로 native 를 매 스텝 재동기화한다.
+        # native 가 잘못되면(예: 요청 1920 → 실제 1512) _to_native 역스케일이 어긋나
+        # 클릭이 우/하로 배수 초과(1512 화면에 1.27x)한다. disp 는 그대로 두어
+        # 시스템 프롬프트에 알린 해상도와 전송 이미지 크기를 일치시킨다.
+        if image.size != (self.native_w, self.native_h):
+            self.native_w, self.native_h = image.size
         if image.size != (self.disp_w, self.disp_h):
             image = image.resize((self.disp_w, self.disp_h), Image.Resampling.LANCZOS)
 
@@ -727,6 +747,7 @@ class MCPClaudeCUAAgent:
             response = self.client.beta.messages.create(
                 model=self.model,
                 max_tokens=self.max_tokens,
+                temperature=self.temperature,
                 system=[
                     {
                         "type": "text",
